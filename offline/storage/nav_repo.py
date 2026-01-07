@@ -3,11 +3,9 @@ from pymongo.errors import DuplicateKeyError
 
 logger = logging.getLogger(__name__)
 
-from config.settings import NAV_COLLECTION
-
 class NavRepo:
     def __init__(self, db):
-        self.collection = db[NAV_COLLECTION]
+        self.collection = db.nav_timeseries
 
     def insert_nav(self, fund_id: int, nav_date, nav_value: float) -> bool:
         doc ={
