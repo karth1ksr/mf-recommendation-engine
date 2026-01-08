@@ -6,6 +6,10 @@ logger = logging.getLogger(__name__)
 class NavRepo:
     def __init__(self, db):
         self.collection = db.nav_timeseries
+        self.collection.create_index(
+            [("fund_id", 1), ("nav_date", -1)],
+            unique=True
+        )
 
     def insert_nav(self, fund_id: int, nav_date, nav_value: float) -> bool:
         doc ={

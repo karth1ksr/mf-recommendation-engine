@@ -14,11 +14,11 @@ class FundMasterPipeline:
     def run(self):
         logger.info("Fund master ingestion started")
 
-        df = self.ingestor.load_csv()
-        records = self.ingestor.transform(df)
+        df = self.fund_master_ingestor.load_csv()
+        records = self.fund_master_ingestor.transform(df)
 
         for record in records:
-            self.repo.upsert_fund(record)
+            self.fund_master_repo.upsert_fund(record)
 
         logger.info(
             "Fund master ingestion completed | total_funds=%s",

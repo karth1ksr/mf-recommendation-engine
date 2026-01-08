@@ -11,7 +11,15 @@ class NavPipeline:
         self.nav_repo = NavRepo(db)
         self.nav_ingestion = NavIngestion()
 
-    def run(self, fund_ids: list[int]):
+    def run(self, fund_ids: list[int] = None):
+        if fund_ids is None:
+            logger.info("No fund_ids provided, fetching active fund_ids from master...")
+            fund_ids = [
+                f["fund_id"] for f in self.nav_repo.collection.database.fund_master.find(
+                    {"is_active": True}, {"fund_id": 1}
+                )
+            ]
+
         logger.info("NAV ingestion started | fund_count=%s", len(fund_ids))
 
         inserted = 0
