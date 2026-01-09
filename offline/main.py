@@ -17,10 +17,11 @@ if __name__=="__main__":
     run_nav = "--nav" in sys.argv
     run_ter = "--ter" in sys.argv
     run_master = "--master" in sys.argv
+    run_cleanup = "--cleanup" in sys.argv
     clear_ter = "--clear-ter" in sys.argv
     
-    # If no specific flags, run all
-    if not run_nav and not run_ter and not run_master:
+    # If no specific flags, run all (excluding cleanup)
+    if not run_nav and not run_ter and not run_master and not run_cleanup:
         run_nav = True
         run_ter = True
         run_master = True
@@ -50,3 +51,8 @@ if __name__=="__main__":
     # 3. Sync TER (Optional)
     if run_ter:
         ter_pipeline.run(delete_month=clear_ter)
+
+    # 4. Cleanup and Validate (Optional)
+    if run_cleanup:
+        from utils.fund_cleaner import cleanup_funds
+        cleanup_funds()
