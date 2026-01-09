@@ -36,8 +36,11 @@ class TerPipeline:
 
         return fund_map
 
-    def run(self):
+    def run(self, delete_month: bool = False):
         logger.info("TER ingestion started")
+
+        if delete_month:
+            self.repo.delete_month_data(self.ingestor.as_of_month)
 
         df = self.ingestor.load()
         fund_map = self.build_fund_map()

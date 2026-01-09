@@ -17,6 +17,7 @@ if __name__=="__main__":
     run_nav = "--nav" in sys.argv
     run_ter = "--ter" in sys.argv
     run_master = "--master" in sys.argv
+    clear_ter = "--clear-ter" in sys.argv
     
     # If no specific flags, run all
     if not run_nav and not run_ter and not run_master:
@@ -48,4 +49,4 @@ if __name__=="__main__":
 
     # 3. Sync TER (Optional)
     if run_ter:
-        ter_pipeline.run()
+        ter_pipeline.run(delete_month=clear_ter)

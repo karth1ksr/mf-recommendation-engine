@@ -10,6 +10,15 @@ class TerRepo:
             unique=True
         )
 
+    def delete_month_data(self, as_of_month: str):
+        """
+        Deletes all TER records for a specific month. 
+        Useful for a fresh ingestion of a month's data.
+        """
+        result = self.collection.delete_many({"as_of_month": as_of_month})
+        if result.deleted_count > 0:
+            logger.info("Cleared existing TER data | month=%s | count=%s", as_of_month, result.deleted_count)
+
     def upsert(self, doc: dict):
         self.collection.update_one(
             {
