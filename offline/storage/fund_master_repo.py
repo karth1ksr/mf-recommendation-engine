@@ -12,9 +12,18 @@ class FundMasterRepository:
     def upsert_fund(self, fund_doc: dict):
         fund_id = fund_doc["fund_id"]
 
+        # Preserve fields managed by the cleanup script (don't overwrite them if they exist)
+        state_fields = ["is_active", "eligible_for_reco"]
+        
+        update_data = {k: v for k, v in fund_doc.items() if k not in state_fields}
+        insert_data = {k: v for k, v in fund_doc.items() if k in state_fields}
+
         self.collection.update_one(
             {"fund_id": fund_id},
-            {"$set": fund_doc},
+            {
+                "$set": update_data,
+                "$setOnInsert": insert_data
+            },
             upsert=True,
         )
 

@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from storage.mongo_client import MongoDBClient
+from utils.string_utils import normalize_name, extract_base_name
 import pandas as pd
 
 logging.basicConfig(level=logging.INFO)
