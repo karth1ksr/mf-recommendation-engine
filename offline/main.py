@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 if __name__=="__main__":
     logging.config.dictConfig(LOGGING_CONFIG)
     
-    # Check for --history flag
+    # Check for pipeline flags
     is_history_sync = "--history" in sys.argv
+    run_nav = "--nav" in sys.argv
+    run_ter = "--ter" in sys.argv
+    
+    # If no specific flags, run all (legacy behavior)
+    if not run_nav and not run_ter:
+        run_nav = True
+        run_ter = True
 
     fund_master_pipeline = FundMasterPipeline(
         csv_path="data/scheme_details.csv"
@@ -24,16 +31,18 @@ if __name__=="__main__":
         as_of_month="2026-01"
     ) 
 
-    # 1. Update master list
+    # 1. Update master list (Required for mapping)
     fund_master_pipeline.run()
 
-    # 2. Sync NAV (History or Latest)
-    if is_history_sync:
-        logger.info("Running FULL historical NAV sync...")
-        nav_pipeline.run_history()
-    else:
-        logger.info("Running daily incremental NAV sync...")
-        nav_pipeline.run()
+    # 2. Sync NAV (Optional)
+    if run_nav:
+        if is_history_sync:
+            logger.info("Running FULL historical NAV sync...")
+            nav_pipeline.run_history()
+        else:
+            logger.info("Running daily incremental NAV sync...")
+            nav_pipeline.run()
 
-    # 3. Sync TER
-    ter_pipeline.run()
+    # 3. Sync TER (Optional)
+    if run_ter:
+        ter_pipeline.run()
