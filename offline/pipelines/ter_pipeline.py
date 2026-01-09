@@ -14,15 +14,33 @@ class TerPipeline:
 
     def build_fund_map(self) -> dict:
         """
-        normalized_scheme_name → fund_id
+        Groups funds by their base name for matching with TER data.
+        Example: { "aditya birla sun life banking...": [{"fund_id": 1, "plan_type": "Direct"}, ...] }
         """
         fund_map = {}
 
         for fund in self.db.fund_master.find(
-            {}, {"fund_id": 1, "scheme_name": 1}
+            {}, {"fund_id": 1, "scheme_name": 1, "plan_type": 1}
         ):
-            key = normalize_name(fund["scheme_name"])
-            fund_map[key] = fund["fund_id"]
+            # Extract base name by splitting on common delimiters and cleaning up
+            full_name = fund["scheme_name"]
+            
+            # Simple heuristic: split by "-" and take the first part
+            # Most names are like "Fund Name - Regular Plan - Growth"
+            base_name_raw = full_name.split(" - ")[0]
+            if " - " not in full_name and "-" in full_name:
+                # Handle cases where there might not be spaces around the hyphen
+                base_name_raw = full_name.split("-")[0]
+            
+            key = normalize_name(base_name_raw)
+            
+            if key not in fund_map:
+                fund_map[key] = []
+            
+            fund_map[key].append({
+                "fund_id": fund["fund_id"],
+                "plan_type": fund.get("plan_type", "Regular")
+            })
 
         return fund_map
 

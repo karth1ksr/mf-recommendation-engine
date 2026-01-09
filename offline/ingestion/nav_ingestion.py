@@ -2,6 +2,7 @@ import time
 from datetime import datetime
 from mftool import Mftool
 import pandas as pd
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,8 @@ class NavIngestion:
         """Helper to retry API calls with exponential backoff"""
         for i in range(max_retries):
             try:
-                # Politeness delay to avoid rate limiting
-                time.sleep(0.5) 
+                # Optimized for faster re-ingestion
+                time.sleep(0.1) 
                 return func(*args, **kwargs)
             except Exception as e:
                 wait_time = initial_wait * (2 ** i)

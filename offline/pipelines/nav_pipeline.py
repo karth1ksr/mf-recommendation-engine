@@ -31,8 +31,8 @@ class NavPipeline:
 
             nav_date, nav_value = result
             if nav_date and nav_value:
-                self.nav_repo.insert_nav(fund_id, nav_date, nav_value)
-                inserted += 1
+                if self.nav_repo.insert_nav(fund_id, nav_date, nav_value):
+                    inserted += 1
 
         # Clean up data older than 6 years
         self.nav_repo.delete_old_nav(lookback_years=6)
@@ -53,7 +53,8 @@ class NavPipeline:
             records = self.nav_ingestion.fetch_history(fund_id)
             if records:
                 self.nav_repo.bulk_insert_nav(records)
-                logger.debug("Synced history for fund_id=%s | records=%s", fund_id, len(records))
+            
+            logger.info("Historical NAV sync complete | fund_id=%s | records=%s", fund_id, len(records))
 
         # Clean up data older than 6 years
         self.nav_repo.delete_old_nav(lookback_years=6)

@@ -3,8 +3,11 @@ from config.logging import *
 from pipelines.nav_pipeline import NavPipeline
 from pipelines.fund_master_pipeline import FundMasterPipeline
 from pipelines.ter_pipeline import TerPipeline
+import logging
 
 import sys
+
+logger = logging.getLogger(__name__)
 
 if __name__=="__main__":
     logging.config.dictConfig(LOGGING_CONFIG)
