@@ -1,13 +1,5 @@
 import pandas as pd
-
-def normalize_name(name: str) -> str:
-    return (
-        name.lower()
-        .replace("&", "and")
-        .replace("-", " ")
-        .replace("  ", " ")
-        .strip()
-    )
+from utils.string_utils import normalize_name
 
 class TerIngestor:
     def __init__(self, file_path: str, as_of_month: str):

@@ -16,11 +16,13 @@ if __name__=="__main__":
     is_history_sync = "--history" in sys.argv
     run_nav = "--nav" in sys.argv
     run_ter = "--ter" in sys.argv
+    run_master = "--master" in sys.argv
     
-    # If no specific flags, run all (legacy behavior)
-    if not run_nav and not run_ter:
+    # If no specific flags, run all
+    if not run_nav and not run_ter and not run_master:
         run_nav = True
         run_ter = True
+        run_master = True
 
     fund_master_pipeline = FundMasterPipeline(
         csv_path="data/scheme_details.csv"
@@ -31,8 +33,9 @@ if __name__=="__main__":
         as_of_month="2026-01"
     ) 
 
-    # 1. Update master list (Required for mapping)
-    fund_master_pipeline.run()
+    # 1. Update master list
+    if run_master:
+        fund_master_pipeline.run()
 
     # 2. Sync NAV (Optional)
     if run_nav:

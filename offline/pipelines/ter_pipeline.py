@@ -1,7 +1,8 @@
 import logging
 from storage.mongo_client import MongoDBClient
 from storage.ter_repo import TerRepo
-from ingestion.ter_ingestion import TerIngestor, normalize_name
+from ingestion.ter_ingestion import TerIngestor
+from utils.string_utils import normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -14,25 +15,16 @@ class TerPipeline:
 
     def build_fund_map(self) -> dict:
         """
-        Groups funds by their base name for matching with TER data.
-        Example: { "aditya birla sun life banking...": [{"fund_id": 1, "plan_type": "Direct"}, ...] }
+        Groups funds by their stored base name for matching with TER data.
         """
         fund_map = {}
 
         for fund in self.db.fund_master.find(
-            {}, {"fund_id": 1, "scheme_name": 1, "plan_type": 1}
+            {}, {"fund_id": 1, "base_name": 1, "plan_type": 1}
         ):
-            # Extract base name by splitting on common delimiters and cleaning up
-            full_name = fund["scheme_name"]
-            
-            # Simple heuristic: split by "-" and take the first part
-            # Most names are like "Fund Name - Regular Plan - Growth"
-            base_name_raw = full_name.split(" - ")[0]
-            if " - " not in full_name and "-" in full_name:
-                # Handle cases where there might not be spaces around the hyphen
-                base_name_raw = full_name.split("-")[0]
-            
-            key = normalize_name(base_name_raw)
+            key = fund.get("base_name")
+            if not key:
+                continue
             
             if key not in fund_map:
                 fund_map[key] = []

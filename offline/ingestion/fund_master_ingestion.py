@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+from utils.string_utils import normalize_name, extract_base_name
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ class FundMasterIngestor:
             record = {
                 "fund_id": int(row["code"]),
                 "scheme_name": scheme_name,
+                "normalized_name": normalize_name(scheme_name),
+                "base_name": normalize_name(extract_base_name(scheme_name)),
                 "amc": row.get("amc"),
                 "scheme_type": row.get("scheme_type"),
                 "scheme_category": row.get("scheme_category"),
@@ -52,4 +55,4 @@ class FundMasterIngestor:
 
             records.append(record)
 
-        return records  
+        return records
