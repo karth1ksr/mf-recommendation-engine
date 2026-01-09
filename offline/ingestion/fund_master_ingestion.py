@@ -27,9 +27,8 @@ class FundMasterIngestor:
 
     @staticmethod
     def derive_option_type(name: str) -> str:
-        name = name.lower()
-
-        if "idcw" in name or "dividend" in name:
+        name_lower = name.lower()
+        if "idcw" in name_lower or "dividend" in name_lower:
             return "IDCW"
         return "Growth"
 
@@ -37,18 +36,21 @@ class FundMasterIngestor:
         records = []
 
         for _, row in df.iterrows():
-            scheme_name = str(row["scheme_name"])
+            # 'scheme_name' is generic, 'scheme_nav_name' is detailed
+            display_name = str(row["scheme_name"])
+            full_detail_name = str(row.get("scheme_nav_name", display_name))
 
             record = {
                 "fund_id": int(row["code"]),
-                "scheme_name": scheme_name,
-                "normalized_name": normalize_name(scheme_name),
-                "base_name": normalize_name(extract_base_name(scheme_name)),
+                "scheme_name": full_detail_name, # detailed name as primary
+                "display_name": display_name,     # generic name for fallback
+                "normalized_name": normalize_name(full_detail_name),
+                "base_name": normalize_name(extract_base_name(full_detail_name)),
                 "amc": row.get("amc"),
                 "scheme_type": row.get("scheme_type"),
                 "scheme_category": row.get("scheme_category"),
-                "plan_type": self.derive_plan_type(scheme_name),
-                "option_type": self.derive_option_type(scheme_name),
+                "plan_type": self.derive_plan_type(full_detail_name),
+                "option_type": self.derive_option_type(full_detail_name),
                 "is_active": True,
                 "eligible_for_reco": True
             }
