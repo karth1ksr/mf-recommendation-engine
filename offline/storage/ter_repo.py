@@ -21,7 +21,7 @@ class TerRepo:
             upsert=True
         )
 
-        logger.debug(
-            "Upserted TER | fund_id=%s | plan=%s | month=%s",
-            doc["fund_id"], doc["plan_type"], doc["as_of_month"]
+        logger.info(
+            "Upserted TER | fund_id=%s | plan=%s | month=%s | ter=%s",
+            doc["fund_id"], doc["plan_type"], doc["as_of_month"], doc["ter"]
         )
