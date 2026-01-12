@@ -12,9 +12,13 @@ LOGGING_CONFIG = {
             "formatter": "standard",
             "level": "INFO",
         },
+        "mongo_error": {
+            "class": "utils.mongo_logger.MongoErrorUpdateHandler",
+            "level": "ERROR",
+        },
     },
     "root": {
         "level": "INFO",
-        "handlers": ["console"],
+        "handlers": ["console", "mongo_error"],
     },
 }
