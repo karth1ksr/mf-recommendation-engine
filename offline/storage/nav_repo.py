@@ -91,3 +91,9 @@ class NavRepo:
         if result.deleted_count > 0:
             logger.info("Cleaned up old NAV data | records_deleted=%s", result.deleted_count)
 
+    def get_nav_series(self, fund_id: int):
+        """
+        Returns a list of NAV records sorted by date
+        """
+        return list(self.collection.find({"fund_id": fund_id}).sort("nav_date", 1))
+

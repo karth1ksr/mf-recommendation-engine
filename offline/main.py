@@ -3,6 +3,7 @@ from config.logging import *
 from pipelines.nav_pipeline import NavPipeline
 from pipelines.fund_master_pipeline import FundMasterPipeline
 from pipelines.ter_pipeline import TerPipeline
+from pipelines.metrics_pipeline import MetricsPipeline
 import logging
 
 import sys
@@ -17,14 +18,16 @@ if __name__=="__main__":
     run_nav = "--nav" in sys.argv
     run_ter = "--ter" in sys.argv
     run_master = "--master" in sys.argv
+    run_metrics = "--metrics" in sys.argv
     run_cleanup = "--cleanup" in sys.argv
     clear_ter = "--clear-ter" in sys.argv
     
     # If no specific flags, run all (excluding cleanup)
-    if not run_nav and not run_ter and not run_master and not run_cleanup:
+    if not run_nav and not run_ter and not run_master and not run_metrics and not run_cleanup:
         run_nav = True
         run_ter = True
         run_master = True
+        run_metrics = True
 
     fund_master_pipeline = FundMasterPipeline(
         csv_path="data/scheme_details.csv"
@@ -34,6 +37,7 @@ if __name__=="__main__":
         ter_file="data/ter_data.xlsx",
         as_of_month="2026-01"
     ) 
+    metrics_pipeline = MetricsPipeline()
 
     # 1. Update master list
     if run_master:
@@ -52,7 +56,11 @@ if __name__=="__main__":
     if run_ter:
         ter_pipeline.run(delete_month=clear_ter)
 
-    # 4. Cleanup and Validate (Optional)
+    # 4. Compute Metrics (Optional)
+    if run_metrics:
+        metrics_pipeline.run()
+
+    # 5. Cleanup and Validate (Optional)
     if run_cleanup:
         from utils.fund_cleaner import cleanup_funds
         cleanup_funds()

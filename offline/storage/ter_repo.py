@@ -34,3 +34,12 @@ class TerRepo:
             "Upserted TER | fund_id=%s | plan=%s | month=%s | ter=%s",
             doc["fund_id"], doc["plan_type"], doc["as_of_month"], doc["ter"]
         )
+
+    def get_latest_ter(self, fund_id: int):
+        """
+        Returns the most recent TER doc for a fund
+        """
+        return self.collection.find_one(
+            {"fund_id": fund_id},
+            sort=[("as_of_month", -1)]
+        )
