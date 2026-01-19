@@ -33,11 +33,6 @@ def get_missing_field(snapshot) -> str | None:
         logger.debug("Missing field identified: investment_horizon_years")
         return "investment_horizon_years"
     
-    # 3. Check Preferred Categories
-    if snapshot.preferred_categories is None:
-        logger.debug("Missing field identified: preferred_categories")
-        return "preferred_categories"
-    
     logger.info("No missing fields identified. Snapshot is complete.")
     return None
 

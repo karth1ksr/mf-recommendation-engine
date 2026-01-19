@@ -61,12 +61,11 @@ class UserSnapshot:
         Checks if the snapshot has all minimum required data for a recommendation.
         
         Returns:
-            bool: True if risk, horizon, and category are captured.
+            bool: True if risk and horizon are captured.
         """
         complete = (
             self.risk_level is not None and 
-            self.investment_horizon_years is not None and
-            self.preferred_categories is not None
+            self.investment_horizon_years is not None
         )
         logger.info(f"Snapshot completeness check: {complete}")
         return complete

@@ -30,44 +30,80 @@ class RecommendationEngine:
     async def get_recommendations(self, snapshot, top_k: int = 5) -> list:
         """
         Generates a ranked list of mutual funds based on user snapshot.
-        
-        Args:
-            snapshot (UserSnapshot): The current user session state containing preferences.
-            top_k (int): Number of recommendations to return. Default is 5.
-            
-        Returns:
-            list[dict]: A sorted list of fund documents with calculated scores.
         """
-        if not snapshot.preferred_categories:
-            logger.warning("Recommendation requested but no preferred categories found in snapshot.")
+        # 1. Determine asset class patterns
+        input_categories = snapshot.preferred_categories
+        
+        if not input_categories:
+            # Fallback mapping if user didn't specify categories
+            mapping = {
+                "low": ["Debt"],
+                "moderate": ["Equity", "Hybrid"],
+                "high": ["Equity"]
+            }
+            input_categories = mapping.get(snapshot.risk_level, [])
+            logger.info(f"Using derived asset classes for risk '{snapshot.risk_level}': {input_categories}")
+
+        if not input_categories:
+            logger.warning("No asset classes could be determined.")
             return []
 
-        logger.info(f"Generating top-{top_k} recommendations for categories: {snapshot.preferred_categories}")
-
-        # 1. Fetch filtered funds from MongoDB
-        # We filter based on the systems derived categories (equity, debt, hybrid)
-        query = {"category": {"$in": snapshot.preferred_categories}}
+        # 2. Build Aggregation Pipeline
+        # We need to find funds in fund_master that match the category, 
+        # then join with fund_metrics to get the precomputed scores.
         
+        # Regex to match categories starting with or containing the asset class
+        regex_pattern = "|".join(input_categories)
+        
+        pipeline = [
+            # Step A: Filter fund_master by category (case-insensitive regex)
+            {
+                "$match": {
+                    "scheme_category": {"$regex": f".*({regex_pattern}).*", "$options": "i"},
+                    "eligible_for_reco": True
+                }
+            },
+            # Step B: Join with fund_metrics
+            {
+                "$lookup": {
+                    "from": "fund_metrics",
+                    "localField": "fund_id",
+                    "foreignField": "fund_id",
+                    "as": "metrics"
+                }
+            },
+            # Step C: Remove funds without metrics
+            {"$unwind": "$metrics"},
+            # Step D: Project necessary fields
+            {
+                "$project": {
+                    "fund_id": 1,
+                    "scheme_name": 1,
+                    "scheme_category": 1,
+                    "metrics": 1
+                }
+            }
+        ]
+
         try:
-            cursor = self.db[self.collection_name].find(query)
-            # Fetching a reasonable pool size for the specific categories
-            funds = await cursor.to_list(length=500)
+            logger.info(f"Running recommendation aggregation for patterns: {regex_pattern}")
+            cursor = self.db["fund_master"].aggregate(pipeline)
+            funds_data = await cursor.to_list(length=1000)
             
-            if not funds:
-                logger.warning(f"No funds found in database for categories: {snapshot.preferred_categories}")
+            if not funds_data:
+                logger.warning(f"No funds joined for patterns: {regex_pattern}")
                 return []
 
-            # 2. Apply Weighting Logic
+            # 3. Apply Weighting Logic in Python
             scored_funds = []
-            for fund in funds:
-                # We assume metrics are already normalized (0 to 1 or Z-score) in the DB
-                # Higher values always represent a "better" metric in this context
-                norm_cagr = fund.get("norm_cagr_5y", 0)
-                norm_consistency = fund.get("norm_consistency", 0)
-                norm_drawdown = fund.get("norm_max_drawdown", 0)
-                norm_expense = fund.get("norm_expense_ratio", 0)
+            for item in funds_data:
+                metrics = item["metrics"]
                 
-                # Weighted formula per LLD 4.5
+                norm_cagr = metrics.get("norm_cagr_5y", 0)
+                norm_consistency = metrics.get("norm_consistency", 0)
+                norm_drawdown = metrics.get("norm_max_drawdown", 0)
+                norm_expense = metrics.get("norm_expense_ratio", 0)
+                
                 score = (
                     0.4 * norm_cagr +
                     0.25 * norm_consistency +
@@ -75,18 +111,26 @@ class RecommendationEngine:
                     0.15 * norm_expense
                 )
                 
-                fund["recommendation_score"] = round(float(score), 4)
-                scored_funds.append(fund)
+                # Flatten the response
+                result = {
+                    "fund_id": item["fund_id"],
+                    "scheme_name": item["scheme_name"],
+                    "category": item["scheme_category"],
+                    "recommendation_score": round(float(score), 4),
+                    "norm_cagr_5y": norm_cagr,
+                    "norm_consistency": norm_consistency,
+                    "norm_max_drawdown": norm_drawdown,
+                    "norm_expense_ratio": norm_expense
+                }
+                scored_funds.append(result)
 
-            # 3. Sort by score descending
+            # 4. Sort and return
             scored_funds.sort(key=lambda x: x["recommendation_score"], reverse=True)
-            
-            # 4. Return top K
             final_selection = scored_funds[:top_k]
             
             logger.info(f"Successfully ranked {len(scored_funds)} funds. Returning top {len(final_selection)}.")
             return final_selection
 
         except Exception as e:
-            logger.error(f"Critical error during recommendation generation: {str(e)}")
+            logger.error(f"Critical error during aggregation: {str(e)}")
             return []
