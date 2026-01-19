@@ -71,18 +71,21 @@ class RequestNormalizer:
 
     def _extract_horizon_deterministic(self, text: str) -> int | None:
         """Extracts duration in years using regular expressions."""
-        patterns = [
-            r'(\d+)\s*(?:year|yr|yrs|years)',
-            r'for\s*(\d+)',
-            r'horizon\s*(?:of)?\s*(\d+)'
-        ]
-        for p in patterns:
-            match = re.search(p, text)
-            if match:
-                try:
-                    return int(match.group(1))
-                except (ValueError, IndexError):
-                    continue
+        # 1. Match number followed by year-related suffixes
+        suffix_match = re.search(r'(\d+)\s*(?:year|yr|yrs|years|y)', text)
+        if suffix_match:
+            return int(suffix_match.group(1))
+
+        # 2. Match common phrases
+        phrase_match = re.search(r'(?:for|horizon of)\s*(\d+)', text)
+        if phrase_match:
+            return int(phrase_match.group(1))
+
+        # 3. If the input is just a standalone number (common in quick chat replies)
+        standalone_match = re.match(r'^(\d+)$', text.strip())
+        if standalone_match:
+            return int(standalone_match.group(1))
+
         return None
 
     async def _extract_with_llm(self, text: str, history: list[dict] = None, last_recommendations: list[dict] = None) -> dict:
@@ -125,7 +128,7 @@ class RequestNormalizer:
         RULES:
         1. Only return the JSON. No conversation.
         2. If a value is not found or ambiguous, use null or [].
-        3. Convert relative time (e.g., "5 years") to integers.
+        3. Convert relative time (e.g., "5 years", "5y", "5 yrs", "5 Y") to integers.
         """
 
         try:
