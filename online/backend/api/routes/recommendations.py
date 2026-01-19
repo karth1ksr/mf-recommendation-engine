@@ -23,11 +23,13 @@ class UserInput(BaseModel):
     history: Optional[List[dict]] = None
 
 class RecommendationResponse(BaseModel):
-    type: str # 'question' or 'recommendation'
+    type: str # 'question', 'recommendation', 'comparison_result', etc.
     text: Optional[str] = None
     question_intent: Optional[str] = None
     data: Optional[List[dict]] = None
     explanation: Optional[str] = None
+    funds: Optional[List[dict]] = None
+    message: Optional[str] = None
 
 # --- Dependencies ---
 async def get_db() -> AsyncIOMotorDatabase:

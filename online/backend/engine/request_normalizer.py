@@ -140,12 +140,50 @@ class RequestNormalizer:
             logger.error(f"LLM Parsing failed: {e}")
             return {}
 
+    async def _extract_comparison_indices(self, text: str, last_recommendations: list[dict] = None) -> list[int]:
+        """
+        Extracts index of funds to compare (1-indexed from user perspective).
+        """
+        if not self.client or not last_recommendations:
+            return []
+
+        prompt = f"""
+        Identify which funds the user wants to compare from the following list.
+        Provide the result as a list of integers representing the ranks (1-indexed).
+
+        RECOMMENDED FUNDS:
+        {"\n".join([f"{i+1}. {r['scheme_name']}" for i, r in enumerate(last_recommendations[:5])])}
+
+        USER INPUT:
+        "{text}"
+
+        OUTPUT FORMAT (JSON ONLY):
+        {{
+            "indices": [index1, index2]
+        }}
+        
+        RULES:
+        1. Only return JSON.
+        2. If indices cannot be found, return [].
+        """
+
+        try:
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt
+            )
+            data = json.loads(response.text.replace('```json', '').replace('```', '').strip())
+            return data.get("indices", [])
+        except Exception as e:
+            logger.error(f"Comparison extraction failed: {e}")
+            return []
+
     async def normalize(self, text: str, history: list[dict] = None, last_recommendations: list[dict] = None) -> dict:
         """
         Main entry point for extraction. Combines deterministic and LLM logic.
         """
         if not text:
-            return {"risk_level": None, "investment_horizon_years": None, "categories": []}
+            return {"risk_level": None, "investment_horizon_years": None, "categories": [], "comparison_indices": []}
 
         clean_text = text.lower().strip()
         
@@ -153,25 +191,37 @@ class RequestNormalizer:
         pref = {
             "risk_level": self._extract_risk_deterministic(clean_text),
             "investment_horizon_years": self._extract_horizon_deterministic(clean_text),
-            "categories": self._extract_categories_deterministic(clean_text)
+            "categories": self._extract_categories_deterministic(clean_text),
+            "comparison_indices": []
         }
 
-        # 2. Contextual LLM Pass (If any field is missing AND we have a model/history)
-        # Or if the input is short/ambiguous (e.g., "yes", "the first one", "moderate")
+        # Handle simple numeric comparison extraction deterministically if possible (e.g. "compare 1 and 2")
+        comp_match = re.search(r'compare\s*(\d+)\s*(?:and|&|,|vs)?\s*(\d+)', clean_text)
+        if comp_match:
+            try:
+                pref["comparison_indices"] = [int(comp_match.group(1)), int(comp_match.group(2))]
+            except ValueError:
+                pass
+
+        # 2. Contextual LLM Pass
         is_ambiguous = len(clean_text.split()) < 4 or history is not None or last_recommendations is not None
-        needs_llm = any(v is None or (isinstance(v, list) and not v) for v in pref.values())
+        needs_llm = any(v is None or (isinstance(v, list) and not v) for k, v in pref.items() if k != "comparison_indices")
 
         if self.client and (is_ambiguous or needs_llm):
             logger.debug("Attempting contextual extraction with LLM...")
             llm_pref = await self._extract_with_llm(text, history, last_recommendations)
             
-            # Merge: LLM only fills what deterministic logic missed
+            # Merge
             if llm_pref.get("risk_level") and not pref["risk_level"]:
                 pref["risk_level"] = llm_pref["risk_level"]
             if llm_pref.get("investment_horizon_years") and not pref["investment_horizon_years"]:
                 pref["investment_horizon_years"] = llm_pref["investment_horizon_years"]
             if llm_pref.get("categories") and not pref["categories"]:
                 pref["categories"] = llm_pref["categories"]
+        
+        # Specific check for comparison indices if intent is likely comparison but deterministic failed
+        if "compare" in clean_text and not pref["comparison_indices"] and self.client:
+            pref["comparison_indices"] = await self._extract_comparison_indices(text, last_recommendations)
 
         logger.info(f"Final Normalized Preferences: {pref}")
         return pref

@@ -34,9 +34,28 @@ async def handle_user_input(
 
     # 2. Handle Specific Intents
     if intent == "COMPARE_FUNDS":
+        # Extract which funds to compare
+        pref = await normalizer.normalize(text, history, snapshot.last_recommendations)
+        indices = pref.get("comparison_indices", [])
+        
+        if len(indices) >= 2 and snapshot.last_recommendations:
+            try:
+                # 1-indexed to 0-indexed
+                fund_a = snapshot.last_recommendations[indices[0]-1]
+                fund_b = snapshot.last_recommendations[indices[1]-1]
+                
+                comparison = compare_funds(fund_a, fund_b)
+                return {
+                    "type": "comparison_result",
+                    "text": comparison,
+                    "funds": [fund_a, fund_b]
+                }
+            except (IndexError, ValueError):
+                pass
+        
         return {
-            "type": "comparison",
-            "message": "Please specify the two funds you would like to compare from the list."
+            "type": "message",
+            "text": "Please specify the two funds you would like to compare (e.g., 'compare 1 and 2')."
         }
 
     if intent == "ASK_EXPLANATION":
