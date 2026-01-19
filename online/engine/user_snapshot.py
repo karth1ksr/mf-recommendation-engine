@@ -20,14 +20,14 @@ class UserSnapshot:
     def __init__(self):
         self.risk_level: str | None = None
         self.investment_horizon_years: int | None = None
-        self.preferred_categories: list[str] = []
+        self.preferred_categories: list[str] | None = None
 
     def update_from_preferences(self, pref_dict: dict):
         """
         Updates the snapshot with new preferences extracted from user input.
         
         Args:
-            pref_dict (dict): Dictionary containing 'risk_level' and 'investment_horizon_years'.
+            pref_dict (dict): Dictionary containing 'risk_level', 'investment_horizon_years', and 'categories'.
         """
         if not pref_dict:
             return
@@ -36,7 +36,6 @@ class UserSnapshot:
         new_risk = pref_dict.get("risk_level")
         if new_risk:
             self.risk_level = new_risk
-            self._derive_categories()
             logger.debug(f"Snapshot risk_level updated to: {self.risk_level}")
 
         # Update horizon
@@ -45,34 +44,32 @@ class UserSnapshot:
             self.investment_horizon_years = new_horizon
             logger.debug(f"Snapshot investment_horizon_years updated to: {self.investment_horizon_years}")
 
+        # Update categories (accumulate multiple)
+        new_categories = pref_dict.get("categories")
+        if new_categories:
+            if self.preferred_categories is None:
+                self.preferred_categories = []
+            
+            for cat in new_categories:
+                if cat not in self.preferred_categories:
+                    self.preferred_categories.append(cat)
+            
+            logger.debug(f"Snapshot preferred_categories updated to: {self.preferred_categories}")
+
     def is_complete(self) -> bool:
         """
         Checks if the snapshot has all minimum required data for a recommendation.
         
         Returns:
-            bool: True if risk and horizon are captured.
+            bool: True if risk, horizon, and category are captured.
         """
-        complete = self.risk_level is not None and self.investment_horizon_years is not None
+        complete = (
+            self.risk_level is not None and 
+            self.investment_horizon_years is not None and
+            self.preferred_categories is not None
+        )
         logger.info(f"Snapshot completeness check: {complete}")
         return complete
-
-    def _derive_categories(self):
-        """
-        Private method to map risk levels to fund categories.
-        
-        Logic:
-            - low -> ["debt"]
-            - moderate -> ["equity", "hybrid"]
-            - high -> ["equity"]
-        """
-        mapping = {
-            "low": ["debt"],
-            "moderate": ["equity", "hybrid"],
-            "high": ["equity"]
-        }
-        
-        self.preferred_categories = mapping.get(self.risk_level, [])
-        logger.debug(f"Derived preferred categories: {self.preferred_categories}")
 
     def __repr__(self):
         return (f"UserSnapshot(risk={self.risk_level}, "

@@ -33,8 +33,8 @@ def get_missing_field(snapshot) -> str | None:
         logger.debug("Missing field identified: investment_horizon_years")
         return "investment_horizon_years"
     
-    # 3. Check Preferred Categories (Derived or explicit)
-    if not snapshot.preferred_categories:
+    # 3. Check Preferred Categories
+    if snapshot.preferred_categories is None:
         logger.debug("Missing field identified: preferred_categories")
         return "preferred_categories"
     
@@ -54,7 +54,7 @@ def get_question_intent(missing_field: str | None) -> str | None:
     mapping = {
         "risk_level": "ASK_RISK_PREFERENCE",
         "investment_horizon_years": "ASK_TIME_HORIZON",
-        "preferred_categories": "ASK_CATEGORY_PREFERENCE"  # Fallback mapping
+        "preferred_categories": "ASK_CATEGORY_PREFERENCE"
     }
     
     intent = mapping.get(missing_field)

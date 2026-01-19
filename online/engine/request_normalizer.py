@@ -41,12 +41,13 @@ class RequestNormalizer:
                 return level
         return None
 
-    def _extract_category(self, text: str) -> str | None:
-        """Determines fund category based on keyword presence."""
+    def _extract_categories(self, text: str) -> list[str]:
+        """Identifies all categories present in the text."""
+        found_categories = []
         for cat, keywords in self.category_map.items():
             if any(kw in text for kw in keywords):
-                return cat
-        return None
+                found_categories.append(cat)
+        return found_categories
 
     def _extract_horizon(self, text: str) -> int | None:
         """
@@ -101,7 +102,7 @@ class RequestNormalizer:
         preferences = {
             "risk_level": self._extract_risk(clean_text),
             "investment_horizon_years": self._extract_horizon(clean_text),
-            "category": self._extract_category(clean_text)
+            "categories": self._extract_categories(clean_text)
         }
 
         logger.info(f"Extracted preferences: {preferences}")
