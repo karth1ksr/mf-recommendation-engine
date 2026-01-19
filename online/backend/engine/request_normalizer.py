@@ -3,7 +3,7 @@ import os
 import json
 import google.generativeai as genai
 from loguru import logger
-from online.core.config import get_settings
+from online.backend.core.config import get_settings
 
 """
 [LLD 4.2] Interaction Layer - Request Normalizer.

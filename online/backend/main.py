@@ -2,14 +2,13 @@ import os
 import sys
 
 # Solution 2: Add project root to sys.path at the absolute start
-# This allows running 'python api/main.py' from within the 'online' directory.
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
 from fastapi import FastAPI
-from online.core.config import get_settings
-from online.api.routes import recommendations
+from online.backend.core.config import get_settings
+from online.backend.api.routes import recommendations
 
 settings = get_settings()
 

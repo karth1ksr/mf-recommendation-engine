@@ -1,12 +1,12 @@
 from loguru import logger
-from online.interaction.intent_detector import detect_intent
-from online.engine.request_normalizer import RequestNormalizer
-from online.engine.clarification_logic import get_missing_field, get_question_intent
-from online.engine.user_snapshot import UserSnapshot
-from online.engine.recommender import RecommendationEngine
+from online.backend.interaction.intent_detector import detect_intent
+from online.backend.engine.request_normalizer import RequestNormalizer
+from online.backend.engine.clarification_logic import get_missing_field, get_question_intent
+from online.backend.engine.user_snapshot import UserSnapshot
+from online.backend.engine.recommender import RecommendationEngine
 
-from online.interaction.static_questions import get_question
-from online.interaction.explanation_llm import explain, compare_funds
+from online.backend.interaction.static_questions import get_question
+from online.backend.interaction.explanation_llm import explain, compare_funds
 
 """
 [LLD 4.6] Engine - Orchestrator.

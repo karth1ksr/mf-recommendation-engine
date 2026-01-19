@@ -1,6 +1,6 @@
 import google.generativeai as genai
 from loguru import logger
-from online.core.config import get_settings
+from online.backend.core.config import get_settings
 
 """
 [LLD 4.8] Interaction Layer - Explanation LLM.

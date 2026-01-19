@@ -3,11 +3,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-from online.core.config import get_settings
-from online.engine.user_snapshot import UserSnapshot
-from online.engine.request_normalizer import RequestNormalizer
-from online.engine.recommender import RecommendationEngine
-from online.engine.orchestrator import handle_user_input
+from online.backend.core.config import get_settings
+from online.backend.engine.user_snapshot import UserSnapshot
+from online.backend.engine.request_normalizer import RequestNormalizer
+from online.backend.engine.recommender import RecommendationEngine
+from online.backend.engine.orchestrator import handle_user_input
 
 router = APIRouter()
 settings = get_settings()
