@@ -1,7 +1,7 @@
 import re
 import os
 import json
-import google.generativeai as genai
+from google import genai
 from loguru import logger
 from online.backend.core.config import get_settings
 
@@ -44,10 +44,14 @@ class RequestNormalizer:
         api_key = settings.GEMINI_API_KEY
         
         if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            try:
+                self.client = genai.Client(api_key=api_key)
+                logger.info("Gemini (google-genai) client initialized successfully.")
+            except Exception as e:
+                self.client = None
+                logger.error(f"Failed to initialize Gemini client: {e}")
         else:
-            self.model = None
+            self.client = None
             logger.warning("GEMINI_API_KEY not found in settings. LLM parsing will be disabled.")
 
     def _extract_risk_deterministic(self, text: str) -> str | None:
@@ -86,7 +90,7 @@ class RequestNormalizer:
         Uses LLM to extract preferences when deterministic logic might fail 
         or when context from history is required.
         """
-        if not self.model:
+        if not self.client:
             return {}
 
         history_context = ""
@@ -118,7 +122,10 @@ class RequestNormalizer:
         """
 
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=prompt
+            )
             # Remove markdown code blocks if present
             clean_response = response.text.replace('```json', '').replace('```', '').strip()
             return json.loads(clean_response)
@@ -147,7 +154,7 @@ class RequestNormalizer:
         is_ambiguous = len(clean_text.split()) < 4 or history is not None
         needs_llm = any(v is None or (isinstance(v, list) and not v) for v in pref.values())
 
-        if self.model and (is_ambiguous or needs_llm):
+        if self.client and (is_ambiguous or needs_llm):
             logger.debug("Attempting contextual extraction with LLM...")
             llm_pref = await self._extract_with_llm(text, history)
             

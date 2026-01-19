@@ -14,7 +14,7 @@ aiomysql  # MySQL Async
 
 # Pipecat & AI Interaction
 pipecat-ai[google,gladia,cartesia]
-google-generativeai
+google-genai
 python-dotenv
 
 # Data Processing

@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from loguru import logger
 from online.backend.core.config import get_settings
 
@@ -66,10 +66,12 @@ def explain(snapshot: dict, recommendations: list) -> str:
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in settings.")
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        client = genai.Client(api_key=api_key)
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt
+        )
         
         if response and response.text:
             logger.info("Successfully generated LLM explanation.")
@@ -140,10 +142,12 @@ def compare_funds(fund_a: dict, fund_b: dict) -> str:
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in settings.")
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        client = genai.Client(api_key=api_key)
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt
+        )
         
         if response and response.text:
             return response.text.strip()

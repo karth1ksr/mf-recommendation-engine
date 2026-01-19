@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MF AI Advisor | Interaction</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+
+<body class="dark-mode">
+    <div class="glass-container">
+        <header>
+            <div class="logo">
+                <span class="icon">📈</span>
+                <h1>MF AI Advisor</h1>
+            </div>
+            <button id="reset-btn" title="Reset Session">🔄</button>
+        </header>
+
+        <main id="chat-window">
+            <div class="message assistant">
+                <p>Hello! I'm your AI Mutual Fund Advisor. To get started, what are your investment goals or risk
+                    preferences?</p>
+            </div>
+        </main>
+
+        <footer class="input-area">
+            <input type="text" id="user-input" placeholder="e.g., I want high risk equity funds for 5 years..."
+                autocomplete="off">
+            <button id="send-btn">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                </svg>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Recommendation Modal (Hidden by default) -->
+    <div id="reco-modal" class="modal hidden">
+        <div class="modal-content glass">
+            <span class="close-modal">&times;</span>
+            <h2>Suggested Recommendations</h2>
+            <div id="reco-list"></div>
+            <h3>Why these funds?</h3>
+            <div id="reco-explanation"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
