@@ -5,6 +5,9 @@ from online.engine.clarification_logic import get_missing_field, get_question_in
 from online.engine.user_snapshot import UserSnapshot
 from online.engine.recommender import RecommendationEngine
 
+from online.interaction.static_questions import get_question
+from online.interaction.explanation_llm import explain, compare_funds
+
 """
 [LLD 4.6] Engine - Orchestrator.
 
@@ -22,49 +25,51 @@ async def handle_user_input(
 ) -> dict:
     """
     Main entry point for processing a user's natural language input.
-    
-    Orchestrates the flow from raw text to either a clarification question 
-    or a list of fund recommendations.
-
-    Args:
-        text (str): The raw user input.
-        snapshot (UserSnapshot): The current session state.
-        normalizer (RequestNormalizer): Instance to extract structured data.
-        recommender (RecommendationEngine): Instance to fetch and score funds.
-
-    Returns:
-        dict: A response object with 'type' and either 'question_intent' or 'data'.
     """
     
     # 1. Detect Intent
     intent = detect_intent(text)
     logger.info(f"Detected intent: {intent}")
 
-    # 2. Extract and Update if Providing Preferences
-    if intent == "PROVIDE_PREFERENCE":
+    # 2. Handle Specific Intents
+    if intent == "COMPARE_FUNDS":
+        # logic to identify which funds to compare (e.g., from last recommendation list)
+        # For now, we'll try to find any mentioned names or indices.
+        # This is a placeholder for more complex extraction logic.
+        return {
+            "type": "comparison",
+            "message": "Please specify the two funds you would like to compare from the list."
+        }
+
+    if intent == "PROVIDE_PREFERENCE" or intent == "START_RECOMMENDATION":
         preferences = normalizer.normalize(text)
         snapshot.update_from_preferences(preferences)
         logger.debug(f"Snapshot updated with preferences: {preferences}")
 
     # 3. Check snapshot completeness
-    # Completeness requires risk_level, horizon, and preferred_categories
     if not snapshot.is_complete():
         # 4. Handle Incomplete Snapshot - Determine what to ask next
         missing_field = get_missing_field(snapshot)
         question_intent = get_question_intent(missing_field)
+        question_text = get_question(question_intent)
         
         logger.info(f"Snapshot incomplete. Missing field: {missing_field}. Intent: {question_intent}")
         
         return {
             "type": "question",
-            "question_intent": question_intent
+            "question_intent": question_intent,
+            "text": question_text
         }
 
     # 5. Handle Complete Snapshot - Generate Recommendations
     logger.info("Snapshot complete. Generating recommendations.")
     recommendations = await recommender.get_recommendations(snapshot)
     
+    # Add human-friendly explanation using LLM
+    explanation = explain(snapshot.__dict__, recommendations)
+    
     return {
         "type": "recommendation",
-        "data": recommendations
+        "data": recommendations,
+        "explanation": explanation
     }
