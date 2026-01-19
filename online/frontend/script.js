@@ -6,8 +6,6 @@ const chatWindow = document.getElementById("chat-window");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
 const resetBtn = document.getElementById("reset-btn");
-const recoModal = document.getElementById("reco-modal");
-const closeModal = document.querySelector(".close-modal");
 
 // --- UI Utilities ---
 
@@ -55,8 +53,13 @@ async function sendMessage(text) {
         if (data.type === "question") {
             addMessage(data.text, "assistant");
         } else if (data.type === "recommendation") {
-            addMessage("I've generated your personalized recommendations! ✨", "assistant");
-            showRecommendations(data);
+            const msg = data.message || "I've generated your personalized recommendations! ✨";
+            addMessage(msg, "assistant");
+            addMessage(renderFundList(data.data), "assistant fund-results");
+        } else if (data.type === "explanation") {
+            addMessage(data.text, "assistant");
+        } else if (data.type === "message") {
+            addMessage(data.text, "assistant");
         }
     } catch (error) {
         removeLoading();
@@ -81,28 +84,21 @@ async function resetSession() {
     }
 }
 
-// --- Recommendations Modal ---
-
-function showRecommendations(recoData) {
-    const listEl = document.getElementById("reco-list");
-    const explanationEl = document.getElementById("reco-explanation");
-
-    listEl.innerHTML = "";
-    recoData.data.forEach(fund => {
-        const card = document.createElement("div");
-        card.className = "fund-card";
-        card.innerHTML = `
-            <div class="fund-info">
-                <h4>${fund.scheme_name}</h4>
-                <p>${fund.category}</p>
+function renderFundList(funds) {
+    let html = '<div class="chat-fund-list">';
+    funds.forEach((fund, index) => {
+        html += `
+            <div class="chat-fund-card">
+                <span class="rank">${index + 1}</span>
+                <div class="fund-details">
+                    <div class="name">${fund.scheme_name}</div>
+                    <div class="meta">${fund.category} | Score: ${fund.recommendation_score}</div>
+                </div>
             </div>
-            <div class="score-badge">${fund.recommendation_score}</div>
         `;
-        listEl.appendChild(card);
     });
-
-    explanationEl.innerText = recoData.explanation;
-    recoModal.classList.add("visible");
+    html += '</div>';
+    return html;
 }
 
 // --- Event Listeners ---
@@ -123,13 +119,3 @@ userInput.addEventListener("keypress", (e) => {
 });
 
 resetBtn.addEventListener("click", resetSession);
-
-closeModal.addEventListener("click", () => {
-    recoModal.classList.remove("visible");
-});
-
-window.addEventListener("click", (e) => {
-    if (e.target === recoModal) {
-        recoModal.classList.remove("visible");
-    }
-});

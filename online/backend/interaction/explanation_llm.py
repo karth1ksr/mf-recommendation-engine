@@ -11,16 +11,10 @@ It strictly adheres to the engine's rankings and does not perform any
 independent recommendation logic.
 """
 
-def explain(snapshot: dict, recommendations: list) -> str:
+def explain(snapshot: dict, recommendations: list, user_query: str = "") -> str:
     """
-    Generates a natural language explanation for the provided fund recommendations.
-    
-    Args:
-        snapshot (dict): User preferences including risk_level, horizon, etc.
-        recommendations (list): List of fund dictionaries ranked by the engine.
-        
-    Returns:
-        str: A personalized explanation or a safe fallback if the LLM call fails.
+    Generates a natural language explanation for the provided fund recommendations,
+    optionally focusing on a specific query from the user.
     """
     
     if not recommendations:
@@ -39,22 +33,26 @@ def explain(snapshot: dict, recommendations: list) -> str:
     # 2. Construct Strict Prompt
     prompt = f"""
     You are a professional financial advisor. 
-    Explain why the following mutual funds were recommended based on the user's profile.
+    A list of mutual funds was recommended to the user based on their profile.
+    The user is now asking a specific question or requesting an explanation.
 
     USER PROFILE:
     - Risk Level: {snapshot.get('risk_level')}
     - Investment Horizon: {snapshot.get('investment_horizon_years')} years
     - Preferred Categories: {snapshot.get('preferred_categories')}
 
-    RECOMMENDED FUNDS (Ranked List):
+    RECOMMENDED FUNDS (Previously Provided):
     {funds_text}
 
+    USER'S CURRENT QUESTION:
+    "{user_query if user_query else 'Explain why these funds were recommended.'}"
+
     INSTRUCTIONS:
-    1. DO NOT change the order or ranking of the funds provided above.
-    2. DO NOT suggest any new funds, companies, or alternative investment types.
-    3. Focus only on explaining the metrics (CAGR, consistency, risk) of the provided funds.
-    4. Keep the tone professional, helpful, and concise.
-    5. Start with a brief summary of how these funds align with their {snapshot.get('risk_level')} risk profile.
+    1. Answer the USER'S QUESTION directly using the provided fund list as context.
+    2. If they ask about a specific fund (e.g. 'the first one'), identify it from the list.
+    3. DO NOT change the ranking or recommend new funds.
+    4. Focus on metrics: CAGR, consistency, and risk.
+    5. Maintain a professional and helpful tone.
 
     EXPLANATION:
     """

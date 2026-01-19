@@ -85,10 +85,10 @@ class RequestNormalizer:
                     continue
         return None
 
-    async def _extract_with_llm(self, text: str, history: list[dict] = None) -> dict:
+    async def _extract_with_llm(self, text: str, history: list[dict] = None, last_recommendations: list[dict] = None) -> dict:
         """
         Uses LLM to extract preferences when deterministic logic might fail 
-        or when context from history is required.
+        or when context from history/recommendations is required.
         """
         if not self.client:
             return {}
@@ -98,12 +98,19 @@ class RequestNormalizer:
             # Format last 3-4 messages for context
             history_context = "\n".join([f"{m['role']}: {m['content']}" for m in history[-4:]])
 
+        reco_context = ""
+        if last_recommendations:
+            reco_context = "CONTEXTUAL RECOMMENDATIONS (Previously Suggested):\n" + \
+                "\n".join([f"{i+1}. {r['scheme_name']}" for i, r in enumerate(last_recommendations[:5])])
+
         prompt = f"""
         Extract mutual fund investment preferences from the user's input.
-        If history is provided, use it to resolve ambiguity (e.g., "the first one").
+        If history or recommendations are provided, use them to resolve ambiguity (e.g., "the first one").
 
         CONVERSATION HISTORY:
         {history_context}
+
+        {reco_context}
 
         USER INPUT:
         "{text}"
@@ -133,7 +140,7 @@ class RequestNormalizer:
             logger.error(f"LLM Parsing failed: {e}")
             return {}
 
-    async def normalize(self, text: str, history: list[dict] = None) -> dict:
+    async def normalize(self, text: str, history: list[dict] = None, last_recommendations: list[dict] = None) -> dict:
         """
         Main entry point for extraction. Combines deterministic and LLM logic.
         """
@@ -151,12 +158,12 @@ class RequestNormalizer:
 
         # 2. Contextual LLM Pass (If any field is missing AND we have a model/history)
         # Or if the input is short/ambiguous (e.g., "yes", "the first one", "moderate")
-        is_ambiguous = len(clean_text.split()) < 4 or history is not None
+        is_ambiguous = len(clean_text.split()) < 4 or history is not None or last_recommendations is not None
         needs_llm = any(v is None or (isinstance(v, list) and not v) for v in pref.values())
 
         if self.client and (is_ambiguous or needs_llm):
             logger.debug("Attempting contextual extraction with LLM...")
-            llm_pref = await self._extract_with_llm(text, history)
+            llm_pref = await self._extract_with_llm(text, history, last_recommendations)
             
             # Merge: LLM only fills what deterministic logic missed
             if llm_pref.get("risk_level") and not pref["risk_level"]:

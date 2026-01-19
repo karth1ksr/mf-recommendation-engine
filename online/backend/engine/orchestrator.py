@@ -39,9 +39,23 @@ async def handle_user_input(
             "message": "Please specify the two funds you would like to compare from the list."
         }
 
+    if intent == "ASK_EXPLANATION":
+        if snapshot.last_recommendations:
+            logger.info("Generating explicit explanation for current recommendations.")
+            explanation = explain(snapshot.__dict__, snapshot.last_recommendations, text)
+            return {
+                "type": "explanation",
+                "text": explanation
+            }
+        else:
+            return {
+                "type": "message",
+                "text": "I haven't recommended any funds yet. Please provide your risk preference and investment horizon first!"
+            }
+
     if intent in ["PROVIDE_PREFERENCE", "START_RECOMMENDATION"]:
         # Upgraded to await asynchronous LLM-enabled normalization
-        preferences = await normalizer.normalize(text, history)
+        preferences = await normalizer.normalize(text, history, snapshot.last_recommendations)
         snapshot.update_from_preferences(preferences)
         logger.debug(f"Snapshot updated with preferences: {preferences}")
 
@@ -64,11 +78,11 @@ async def handle_user_input(
     logger.info("Snapshot complete. Generating recommendations.")
     recommendations = await recommender.get_recommendations(snapshot)
     
-    # Explain why these funds were chosen
-    explanation = explain(snapshot.__dict__, recommendations)
+    # Store in snapshot so user can ask for explanations/comparisons later
+    snapshot.last_recommendations = recommendations
     
     return {
         "type": "recommendation",
         "data": recommendations,
-        "explanation": explanation
+        "message": "I've found some mutual funds that match your profile. Would you like me to explain why these were chosen?"
     }

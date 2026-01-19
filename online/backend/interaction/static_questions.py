@@ -19,7 +19,7 @@ def get_question(intent: str) -> str:
     
     mapping = {
         "ASK_RISK_PREFERENCE": "What level of risk are you comfortable with? (low / moderate / high)",
-        "ASK_TIME_HORIZON": "Is this for short-term or long-term investment?",
+        "ASK_TIME_HORIZON": "How long do you plan to invest for? (in years)",
         "ASK_CATEGORY_PREFERENCE": "Which category do you prefer Equity / Debt / Hybrid?"
     }
     

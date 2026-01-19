@@ -21,6 +21,7 @@ class UserSnapshot:
         self.risk_level: str | None = None
         self.investment_horizon_years: int | None = None
         self.preferred_categories: list[str] | None = None
+        self.last_recommendations: list[dict] | None = None
 
     def update_from_preferences(self, pref_dict: dict):
         """
