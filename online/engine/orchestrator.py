@@ -21,7 +21,8 @@ async def handle_user_input(
     text: str, 
     snapshot: UserSnapshot, 
     normalizer: RequestNormalizer, 
-    recommender: RecommendationEngine
+    recommender: RecommendationEngine,
+    history: list[dict] = None
 ) -> dict:
     """
     Main entry point for processing a user's natural language input.
@@ -33,27 +34,25 @@ async def handle_user_input(
 
     # 2. Handle Specific Intents
     if intent == "COMPARE_FUNDS":
-        # logic to identify which funds to compare (e.g., from last recommendation list)
-        # For now, we'll try to find any mentioned names or indices.
-        # This is a placeholder for more complex extraction logic.
         return {
             "type": "comparison",
             "message": "Please specify the two funds you would like to compare from the list."
         }
 
-    if intent == "PROVIDE_PREFERENCE" or intent == "START_RECOMMENDATION":
-        preferences = normalizer.normalize(text)
+    if intent in ["PROVIDE_PREFERENCE", "START_RECOMMENDATION"]:
+        # Upgraded to await asynchronous LLM-enabled normalization
+        preferences = await normalizer.normalize(text, history)
         snapshot.update_from_preferences(preferences)
         logger.debug(f"Snapshot updated with preferences: {preferences}")
 
     # 3. Check snapshot completeness
     if not snapshot.is_complete():
-        # 4. Handle Incomplete Snapshot - Determine what to ask next
+        # 4. Handle Incomplete Snapshot
         missing_field = get_missing_field(snapshot)
         question_intent = get_question_intent(missing_field)
         question_text = get_question(question_intent)
         
-        logger.info(f"Snapshot incomplete. Missing field: {missing_field}. Intent: {question_intent}")
+        logger.info(f"Snapshot incomplete. Missing field: {missing_field}")
         
         return {
             "type": "question",
@@ -61,11 +60,11 @@ async def handle_user_input(
             "text": question_text
         }
 
-    # 5. Handle Complete Snapshot - Generate Recommendations
+    # 5. Handle Complete Snapshot
     logger.info("Snapshot complete. Generating recommendations.")
     recommendations = await recommender.get_recommendations(snapshot)
     
-    # Add human-friendly explanation using LLM
+    # Explain why these funds were chosen
     explanation = explain(snapshot.__dict__, recommendations)
     
     return {

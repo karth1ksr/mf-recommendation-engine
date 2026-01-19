@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     
     # MongoDB Settings
     MONGODB_URL: str = "mongodb://localhost:27017"
-    DATABASE_NAME: str = "mf_recommendation"
+    DATABASE_NAME: str = "mf_engine"
     
     # Redis Settings
     REDIS_URL: str = "redis://localhost:6379"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     MYSQL_DB: str = "user_portfolio"
     
     # External Services
-    GOOGLE_API_KEY: str = ""
+    GEMINI_API_KEY: str = "AIzaSyBtLB9gXzS3m3-wDlww9ZRdfd3goy0p1vc"
     GLADIA_API_KEY: str = ""
     CARTESIA_API_KEY: str = ""
     

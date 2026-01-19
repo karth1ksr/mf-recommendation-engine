@@ -1,6 +1,6 @@
-import os
 import google.generativeai as genai
 from loguru import logger
+from online.core.config import get_settings
 
 """
 [LLD 4.8] Interaction Layer - Explanation LLM.
@@ -61,12 +61,13 @@ def explain(snapshot: dict, recommendations: list) -> str:
 
     # 3. Secure LLM Call
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
+        settings = get_settings()
+        api_key = settings.GEMINI_API_KEY
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment.")
+            raise ValueError("GEMINI_API_KEY not found in settings.")
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         response = model.generate_content(prompt)
         
@@ -134,12 +135,13 @@ def compare_funds(fund_a: dict, fund_b: dict) -> str:
     """
 
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
+        settings = get_settings()
+        api_key = settings.GEMINI_API_KEY
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment.")
+            raise ValueError("GEMINI_API_KEY not found in settings.")
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         response = model.generate_content(prompt)
         
