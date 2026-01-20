@@ -1,0 +1,27 @@
+# Online Module Requirements
+
+# FastAPI & Web
+fastapi
+uvicorn
+python-multipart
+pydantic
+pydantic-settings
+
+# Database & Cache
+motor  # MongoDB Async
+aioredis  # Redis Async
+aiomysql  # MySQL Async
+
+# Pipecat & AI Interaction
+pipecat-ai[google,gladia,cartesia]
+google-genai
+python-dotenv
+
+# Data Processing
+pandas
+numpy
+
+# Testing & Utils
+pytest
+pytest-asyncio
+loguru
