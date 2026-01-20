@@ -1,3 +1,4 @@
+import re
 from loguru import logger
 
 """
@@ -79,6 +80,11 @@ def detect_intent(text: str) -> str:
     ]
     if any(kw in clean_text for kw in preference_keywords):
         logger.info("Intent detected: PROVIDE_PREFERENCE")
+        return "PROVIDE_PREFERENCE"
+
+    # 2.5 Numeric Phrases (often replies like "5", "only 5", "for 10 years")
+    if re.search(r'\b\d+\b', clean_text) and len(clean_text.split()) <= 4:
+        logger.info("Intent detected: PROVIDE_PREFERENCE (short numeric reply)")
         return "PROVIDE_PREFERENCE"
 
     # 3. Fallback

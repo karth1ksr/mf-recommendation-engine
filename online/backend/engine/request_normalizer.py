@@ -76,15 +76,22 @@ class RequestNormalizer:
         if suffix_match:
             return int(suffix_match.group(1))
 
-        # 2. Match common phrases
-        phrase_match = re.search(r'(?:for|horizon of)\s*(\d+)', text)
+        # 2. Match common phrases (for 5, horizon of 5, only 5)
+        phrase_match = re.search(r'(?:for|horizon of|only)\s*(\d+)', text)
         if phrase_match:
             return int(phrase_match.group(1))
 
-        # 3. If the input is just a standalone number (common in quick chat replies)
-        standalone_match = re.match(r'^(\d+)$', text.strip())
+        # 3. If the input contains a standalone number (common in quick chat replies)
+        standalone_match = re.search(r'\b(\d+)\b', text.strip())
         if standalone_match:
-            return int(standalone_match.group(1))
+            try:
+                val = int(standalone_match.group(1))
+                # Only return if it's a plausible year count (e.g. 1-50) 
+                # to avoid matching rank '1' as 1 year
+                if 1 <= val <= 50:
+                    return val
+            except ValueError:
+                pass
 
         return None
 
