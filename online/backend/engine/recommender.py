@@ -96,10 +96,13 @@ class RecommendationEngine:
 
             # 3. Apply Weighting Logic in Python
             scored_funds = []
+            horizon = snapshot.investment_horizon_years or 5
+            cagr_key = "norm_cagr_3y" if horizon < 5 else "norm_cagr_5y"
+
             for item in funds_data:
                 metrics = item["metrics"]
                 
-                norm_cagr = metrics.get("norm_cagr_5y", 0)
+                norm_cagr = metrics.get(cagr_key, 0)
                 norm_consistency = metrics.get("norm_consistency", 0)
                 norm_drawdown = metrics.get("norm_max_drawdown", 0)
                 norm_expense = metrics.get("norm_expense_ratio", 0)
@@ -117,7 +120,8 @@ class RecommendationEngine:
                     "scheme_name": item["scheme_name"],
                     "category": item["scheme_category"],
                     "recommendation_score": round(float(score), 4),
-                    "norm_cagr_5y": norm_cagr,
+                    "norm_cagr_3y": metrics.get("norm_cagr_3y", 0),
+                    "norm_cagr_5y": metrics.get("norm_cagr_5y", 0),
                     "norm_consistency": norm_consistency,
                     "norm_max_drawdown": norm_drawdown,
                     "norm_expense_ratio": norm_expense
@@ -128,7 +132,7 @@ class RecommendationEngine:
             scored_funds.sort(key=lambda x: x["recommendation_score"], reverse=True)
             final_selection = scored_funds[:top_k]
             
-            logger.info(f"Successfully ranked {len(scored_funds)} funds. Returning top {len(final_selection)}.")
+            logger.info(f"Successfully ranked {len(scored_funds)} funds (using {cagr_key}). Returning top {len(final_selection)}.")
             return final_selection
 
         except Exception as e:

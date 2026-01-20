@@ -48,7 +48,8 @@ async def handle_user_input(
                 return {
                     "type": "comparison_result",
                     "text": comparison,
-                    "funds": [fund_a, fund_b]
+                    "funds": [fund_a, fund_b],
+                    "horizon": snapshot.investment_horizon_years
                 }
             except (IndexError, ValueError):
                 pass

@@ -30,6 +30,7 @@ class RecommendationResponse(BaseModel):
     explanation: Optional[str] = None
     funds: Optional[List[dict]] = None
     message: Optional[str] = None
+    horizon: Optional[int] = None
 
 # --- Dependencies ---
 async def get_db() -> AsyncIOMotorDatabase:

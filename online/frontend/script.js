@@ -66,7 +66,7 @@ async function sendMessage(text) {
             addMessage(renderFundList(data.data), "assistant fund-results");
         } else if (data.type === "comparison_result") {
             addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-            showComparisonModal(data.funds, data.text);
+            showComparisonModal(data.funds, data.text, data.horizon);
         } else if (data.type === "explanation") {
             addMessage(data.text, "assistant");
         } else if (data.type === "message") {
@@ -79,7 +79,7 @@ async function sendMessage(text) {
     }
 }
 
-function showComparisonModal(funds, analysis) {
+function showComparisonModal(funds, analysis, horizon) {
     const f1 = funds[0];
     const f2 = funds[1];
 
@@ -99,9 +99,9 @@ function showComparisonModal(funds, analysis) {
                     <td>${f2.recommendation_score}</td>
                 </tr>
                 <tr>
-                    <th>CAGR (5Y)</th>
-                    <td>${(f1.norm_cagr_5y * 100).toFixed(2)}%</td>
-                    <td>${(f2.norm_cagr_5y * 100).toFixed(2)}%</td>
+                    <th>CAGR (${horizon < 5 ? '3Y' : '5Y'})</th>
+                    <td>${((horizon < 5 ? f1.norm_cagr_3y : f1.norm_cagr_5y) * 100).toFixed(2)}%</td>
+                    <td>${((horizon < 5 ? f2.norm_cagr_3y : f2.norm_cagr_5y) * 100).toFixed(2)}%</td>
                 </tr>
                 <tr>
                     <th>Consistency</th>
