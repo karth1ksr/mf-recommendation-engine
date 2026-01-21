@@ -28,16 +28,31 @@ from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIPro
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.google.llm import GoogleLLMService
-from pipecat.runner.daily import configure
+
+from pipecat.transports.services.helpers.daily_rest import (
+    DailyRESTHelper, 
+    DailyRoomParams, 
+    DailyRoomProperties
+)
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 from online.backend.core.config import get_settings
 from online.backend.interaction.mf_processor import MFProcessor
 
-async def main():
+async def main(user_id: str, room_url: str = None, token: str = None):
     logger.info("Smart Text/Voice Bot Starting!")
     async with aiohttp.ClientSession() as session:
-        (room_url, token) = await configure(session)
+        
+        if not room_url:
+            daily_helper = DailyRESTHelper(api_key=os.getenv("DAILY_API_KEY"))
+            room = await daily_helper.create_room(
+                DailyRoomParams(
+                    name=f"mf-{user_id}",
+                    privacy="private",
+                    properties=DailyRoomProperties(max_participants=2)
+                )
+            )
+            room_url, token = room.url, await daily_helper.get_token(room.url)
 
         # Load settings
         settings = get_settings()
@@ -121,4 +136,4 @@ async def main():
             client.close()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(user_id=""))
