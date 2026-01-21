@@ -74,7 +74,7 @@ async def main(user_id: str, room_url: str = None, token: str = None):
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 transcription_enabled=True,
-                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.15)),
             ),
         )
 
@@ -105,6 +105,9 @@ async def main(user_id: str, room_url: str = None, token: str = None):
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
+                audio_in_sample_rate=16000,      
+                audio_out_sample_rate=24000,   
+                audio_out_10ms_chunks=2,  
                 enable_metrics=True,
                 enable_usage_metrics=True,
             ),
