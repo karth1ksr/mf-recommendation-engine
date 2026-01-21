@@ -37,6 +37,7 @@ from pipecat.transports.services.helpers.daily_rest import (
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 from online.backend.core.config import get_settings
+from online.backend.core.sessions import sessions
 from online.backend.interaction.mf_processor import MFProcessor
 
 async def main(user_id: str, room_url: str = None, token: str = None):
@@ -86,7 +87,7 @@ async def main(user_id: str, room_url: str = None, token: str = None):
 
         # 3. Initialize Processors
         rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
-        mf_processor = MFProcessor(db)
+        mf_processor = MFProcessor(db, sessions_store=sessions, session_id=user_id)
 
         # 4. Pipeline
         pipeline = Pipeline(
