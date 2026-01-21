@@ -13,7 +13,7 @@ aioredis  # Redis Async
 aiomysql  # MySQL Async
 
 # Pipecat & AI Interaction
-pipecat-ai[google,gladia,cartesia]
+pipecat-ai[webrtc, daily,silero,deepgram,google,cartesia,local-smart-turn-v3,runner]
 google-genai
 python-dotenv
 
