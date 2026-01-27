@@ -40,6 +40,9 @@ from online.backend.core.config import get_settings
 from online.backend.core.sessions import sessions
 from online.backend.interaction.mf_processor import MFProcessor
 
+# Load settings
+settings = get_settings()
+
 async def main(user_id: str, room_url: str = None, token: str = None):
     logger.info("Smart Text/Voice Bot Starting!")
     async with aiohttp.ClientSession() as session:
@@ -54,9 +57,6 @@ async def main(user_id: str, room_url: str = None, token: str = None):
                 )
             )
             room_url, token = room.url, await daily_helper.get_token(room.url)
-
-        # Load settings
-        settings = get_settings()
 
         # Initialize MongoDB
         client = AsyncIOMotorClient(settings.MONGODB_URL)
