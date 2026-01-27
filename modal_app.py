@@ -51,11 +51,11 @@ def fastapi_api():
     secrets=[modal.Secret.from_name("MF_SECRETS")], 
     timeout=7200
 )
-def voice_bot(user_id: str):
+def voice_bot(user_id: str, room_url: str, token: str):
     import asyncio
     import sys
     if "/root" not in sys.path:
         sys.path.append("/root")
 
     from online.backend.interaction.pipecat_pipeline import main  
-    asyncio.run(main(user_id=user_id))
+    asyncio.run(main(user_id=user_id, room_url=room_url, token=token))

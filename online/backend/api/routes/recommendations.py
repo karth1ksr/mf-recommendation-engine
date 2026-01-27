@@ -88,6 +88,15 @@ async def join_voice_session(session_id: str):
             if session_id not in sessions:
                 sessions[session_id] = UserSnapshot()
                 
+            # Trigger the Modal Voice Bot in the background
+            try:
+                import modal
+                v_bot = modal.Function.lookup("mf-voice-bot", "voice_bot")
+                v_bot.spawn(session_id, room.url, token)
+            except Exception as e:
+                # We log but don't fail, as the room is already created
+                print(f"Failed to spawn voice bot: {e}")
+
             return {
                 "room_url": room.url,
                 "token": token,
@@ -95,6 +104,8 @@ async def join_voice_session(session_id: str):
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to create voice room: {str(e)}")
+
+        
 
 @router.delete("/session/{session_id}")
 async def reset_session(session_id: str):

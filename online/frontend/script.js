@@ -1,4 +1,4 @@
-const API_BASE = "https://srkarthik27--mf-voice-bot-fastapi-api.modal.run";
+const API_BASE = "https://srkarthik27--mf-voice-bot-fastapi-api.modal.run/api/v1";
 let sessionId = localStorage.getItem("mf_session_id") || crypto.randomUUID();
 localStorage.setItem("mf_session_id", sessionId);
 
