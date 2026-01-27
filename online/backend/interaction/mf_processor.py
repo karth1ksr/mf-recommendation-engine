@@ -1,5 +1,5 @@
 from loguru import logger 
-from pipecat.frames.frames import Frame, TextFrame, TranscriptionFrame
+from pipecat.frames.frames import Frame, TextFrame, TranscriptionFrame, DataFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor 
 
 from online.backend.engine.orchestrator import handle_user_input
@@ -77,11 +77,12 @@ class MFProcessor(FrameProcessor):
                 # Send to TTS
                 await self.push_frame(TextFrame(voice_text))
             
-            # Always push the structured response "downstream" as well 
+            # 6. Push Structured Data for the Frontend (Modal/UI)
             # This allows the frontend to render UI (cards/tables) via the data channel
-            # in addition to the voice/text response.
-            # (In RTVI, you'd send this as a custom action or message)
-            # await self.push_frame(DataFrame(data_payload)) # Example for data channel
+            # We push it for significant transitions like recommendations or comparisons.
+            if res_type in ["recommendation", "comparison_result"]:
+                logger.info(f"MFProcessor: Pushing structured data for {res_type}")
+                await self.push_frame(DataFrame(data_payload))
 
         # Always forward the original frame 
         await self.push_frame(frame, direction)

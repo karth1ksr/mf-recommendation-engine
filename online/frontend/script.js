@@ -10,12 +10,69 @@ const compModal = document.getElementById("comp-modal");
 const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
+const micBtn = document.getElementById("mic-btn");
 
-closeCompBtn.addEventListener("click", () => {
-    compModal.classList.add("hidden");
-});
+let callFrame = null;
+let isMicOn = false;
 
-// --- UI Utilities ---
+async function initVoice() {
+    try {
+        addMessage("Connecting to voice engine...", "assistant");
+
+        const response = await fetch(`${API_BASE}/voice/join?session_id=${sessionId}`, {
+            method: "POST"
+        });
+
+        const { room_url, token } = await response.json();
+
+        // Initialize Daily call
+        callFrame = DailyIframe.createCallObject();
+
+        await callFrame.join({
+            url: room_url,
+            token: token,
+            videoSource: false
+        });
+
+        // Set initial mic state to OFF
+        await callFrame.setLocalAudio(false);
+        isMicOn = false;
+        micBtn.classList.add("mic-off");
+        micBtn.classList.remove("mic-on");
+
+        addMessage("Connected! You can speak or type to me.", "assistant");
+
+        // Listen for Data Channel messages from Pipecat
+        callFrame.on("app-message", (evt) => {
+            const data = evt.data;
+            console.log("Received data channel message:", data);
+
+            // Path: backend DataFrame(payload) arrives here as evt.data
+            handleBackendData(data);
+        });
+
+    } catch (err) {
+        console.error("Failed to join voice session:", err);
+        addMessage("Error connecting to voice. Please check backend.", "assistant");
+    }
+}
+
+function handleBackendData(data) {
+    if (!data) return;
+
+    if (data.type === "question") {
+        addMessage(data.text, "assistant");
+    } else if (data.type === "recommendation") {
+        const msg = data.message || "I've generated your personalized recommendations! ✨";
+        addMessage(msg, "assistant");
+        addMessage(renderFundList(data.data), "assistant fund-results");
+    } else if (data.type === "comparison_result") {
+        addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
+        showComparisonModal(data.funds, data.text, data.horizon);
+    } else if (data.type === "explanation" || data.type === "message") {
+        addMessage(data.text, "assistant");
+    }
+}
 
 function addMessage(text, role) {
     const div = document.createElement("div");
@@ -25,61 +82,9 @@ function addMessage(text, role) {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-function showLoading() {
-    const div = document.createElement("div");
-    div.className = "message assistant loading";
-    div.id = "loading-bubble";
-    div.innerHTML = "<p>Analyzing your requirements...</p>";
-    chatWindow.appendChild(div);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
-}
-
-function removeLoading() {
-    const loader = document.getElementById("loading-bubble");
-    if (loader) loader.remove();
-}
-
-// --- API Calls ---
-
-async function sendMessage(text) {
-    showLoading();
-    try {
-        const response = await fetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                session_id: sessionId,
-                text: text
-            })
-        });
-
-        const data = await response.json();
-        removeLoading();
-
-        if (data.type === "question") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "recommendation") {
-            const msg = data.message || "I've generated your personalized recommendations! ✨";
-            addMessage(msg, "assistant");
-            addMessage(renderFundList(data.data), "assistant fund-results");
-        } else if (data.type === "comparison_result") {
-            addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-            showComparisonModal(data.funds, data.text, data.horizon);
-        } else if (data.type === "explanation") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "message") {
-            addMessage(data.text, "assistant");
-        }
-    } catch (error) {
-        removeLoading();
-        addMessage("Sorry, I'm having trouble connecting to the engine. Is the backend running?", "assistant");
-        console.error("API Error:", error);
-    }
-}
-
 function showComparisonModal(funds, analysis, horizon) {
+    if (!funds || funds.length < 2) return;
+
     const f1 = funds[0];
     const f2 = funds[1];
 
@@ -118,40 +123,16 @@ function showComparisonModal(funds, analysis, horizon) {
                     <td>${f1.norm_expense_ratio.toFixed(4)}</td>
                     <td>${f2.norm_expense_ratio.toFixed(4)}</td>
                 </tr>
-                <tr>
-                    <th>Category</th>
-                    <td>${f1.category}</td>
-                    <td>${f2.category}</td>
-                </tr>
             </tbody>
         </table>
     `;
 
     compTableContainer.innerHTML = tableHtml;
-    // Simple newline to BR conversion for better formatting in modal
     const formattedAnalysis = analysis.replace(/\n/g, '<br>');
     compAnalysis.innerHTML = formattedAnalysis;
 
-    if (compModal) {
-        compModal.classList.remove("hidden");
-        compModal.style.display = "flex"; // Ensure it shows
-    }
-}
-
-async function resetSession() {
-    try {
-        await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
-        localStorage.removeItem("mf_session_id");
-        sessionId = crypto.randomUUID();
-        localStorage.setItem("mf_session_id", sessionId);
-        chatWindow.innerHTML = `
-            <div class="message assistant">
-                <p>Session reset. How can I help you find mutual funds today?</p>
-            </div>
-        `;
-    } catch (err) {
-        console.error("Reset failed", err);
-    }
+    compModal.classList.remove("hidden");
+    compModal.style.display = "flex";
 }
 
 function renderFundList(funds) {
@@ -171,21 +152,63 @@ function renderFundList(funds) {
     return html;
 }
 
-// --- Event Listeners ---
+// Update sendMessage to send via Data Channel if active
+async function sendMessage(text) {
+    if (callFrame) {
+        // Send to Pipecat via Daily app-message
+        // The transport will usually broadcast this, and we need the backend to pick it up.
+        // For the MFProcessor to see it, the pipeline needs to handle this frame.
+        // We'll send it as a simple string or an object the backend expects.
+        callFrame.sendAppMessage({ text: text }, "*");
+        addMessage(text, "user");
+    } else {
+        addMessage("Not connected to voice engine. Click 'Connect' first.", "assistant");
+    }
+}
+
+closeCompBtn.addEventListener("click", () => {
+    compModal.classList.add("hidden");
+    compModal.style.display = "none";
+});
 
 sendBtn.addEventListener("click", () => {
     const text = userInput.value.trim();
     if (text) {
-        addMessage(text, "user");
         sendMessage(text);
         userInput.value = "";
     }
 });
 
 userInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-        sendBtn.click();
+    if (e.key === "Enter") sendBtn.click();
+});
+
+micBtn.addEventListener("click", async () => {
+    if (!callFrame) return;
+
+    isMicOn = !isMicOn;
+    await callFrame.setLocalAudio(isMicOn);
+
+    if (isMicOn) {
+        micBtn.classList.add("mic-on");
+        micBtn.classList.remove("mic-off");
+    } else {
+        micBtn.classList.add("mic-off");
+        micBtn.classList.remove("mic-on");
     }
 });
 
-resetBtn.addEventListener("click", resetSession);
+resetBtn.addEventListener("click", async () => {
+    if (callFrame) {
+        await callFrame.leave();
+        callFrame = null;
+    }
+    await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
+    localStorage.removeItem("mf_session_id");
+    location.reload();
+});
+
+// Auto-init on first click to satisfy browser audio policies
+document.body.addEventListener('click', () => {
+    if (!callFrame) initVoice();
+}, { once: true });

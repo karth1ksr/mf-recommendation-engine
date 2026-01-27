@@ -45,7 +45,7 @@ async def main(user_id: str, room_url: str = None, token: str = None):
     async with aiohttp.ClientSession() as session:
         
         if not room_url:
-            daily_helper = DailyRESTHelper(api_key=os.getenv("DAILY_API_KEY"))
+            daily_helper = DailyRESTHelper(api_key=settings.DAILY_API_KEY)
             room = await daily_helper.create_room(
                 DailyRoomParams(
                     name=f"mf-{user_id}",
@@ -79,9 +79,9 @@ async def main(user_id: str, room_url: str = None, token: str = None):
         )
 
         # 2. Initialize Services
-        stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+        stt = DeepgramSTTService(api_key=settings.DEEPGRAM_API_KEY)
         tts = CartesiaTTSService(
-            api_key=os.getenv("CARTESIA_API_KEY"),
+            api_key=settings.CARTESIA_API_KEY,
             voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",
         )
 
@@ -129,6 +129,13 @@ async def main(user_id: str, room_url: str = None, token: str = None):
         @transport.event_handler("on_participant_left")
         async def on_participant_left(participant):
             await task.cancel()
+
+        @transport.event_handler("on_app_message")
+        async def on_app_message(transport, payload, participant_id):
+            logger.info(f"Received app message: {payload}")
+            if isinstance(payload, dict) and "text" in payload:
+                # Inject text from data channel into the pipeline as an UPSTREAM TextFrame
+                await task.queue_frame(TextFrame(payload["text"]), FrameDirection.UPSTREAM)
           
         # 7. Run
         runner = PipelineRunner()
@@ -140,4 +147,7 @@ async def main(user_id: str, room_url: str = None, token: str = None):
             client.close()
 
 if __name__ == "__main__":
-    asyncio.run(main(user_id=""))
+    import sys
+    # Use user_id from command line if provided, else default to "test-user"
+    user_id = sys.argv[1] if len(sys.argv) > 1 else "test-user"
+    asyncio.run(main(user_id=user_id))
