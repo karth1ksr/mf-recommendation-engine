@@ -88,14 +88,26 @@ async def join_voice_session(session_id: str):
             if session_id not in sessions:
                 sessions[session_id] = UserSnapshot()
                 
-            # Trigger the Modal Voice Bot in the background
+            # Trigger the Local Voice Bot in the background (Non-Modal)
             try:
-                import modal
-                v_bot = modal.Function.lookup("mf-voice-bot", "voice_bot")
-                v_bot.spawn(session_id, room.url, token)
+                import subprocess
+                import sys
+                
+                # Get path to the pipeline script
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                pipeline_script = os.path.abspath(os.path.join(current_dir, "..", "..", "interaction", "pipecat_pipeline.py"))
+                
+                # Ensure we use the correct python interpreter
+                subprocess.Popen([
+                    sys.executable, 
+                    pipeline_script, 
+                    session_id, 
+                    room.url, 
+                    token
+                ])
+                print(f"Started local voice bot for session: {session_id}")
             except Exception as e:
-                # We log but don't fail, as the room is already created
-                print(f"Failed to spawn voice bot: {e}")
+                print(f"Failed to start local voice bot: {e}")
 
             return {
                 "room_url": room.url,

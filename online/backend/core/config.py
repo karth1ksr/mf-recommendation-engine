@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # External Services
     GEMINI_API_KEY: str = "AIzaSyBtLB9gXzS3m3-wDlww9ZRdfd3goy0p1vc"
     DEEPGRAM_API_KEY: str = "c4e7edc329abbfb99752fa676e5a1762f96ee18e"
-    CARTESIA_API_KEY: str = "sk_car_Hrg71jf8ZaxYGvgbBKL7jA"
+    CARTESIA_API_KEY: str = "sk_car_68YBBDSMbbgrWFktyeZBS7"
 
     DAILY_API_KEY: str ="1bcf5ff4c3d9369950c274671b2768533d8073955a67bf43976487aedc366b93"
     

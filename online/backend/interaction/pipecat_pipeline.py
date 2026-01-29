@@ -34,7 +34,7 @@ from pipecat.transports.services.helpers.daily_rest import (
     DailyRoomParams, 
     DailyRoomProperties
 )
-from pipecat.transports.daily.transport import DailyParams, DailyTransport
+from pipecat.transports.daily.utils import DailyParams, DailyTransport
 
 from online.backend.core.config import get_settings
 from online.backend.core.sessions import sessions
@@ -48,7 +48,7 @@ async def main(user_id: str, room_url: str = None, token: str = None):
     async with aiohttp.ClientSession() as session:
         
         if not room_url:
-            daily_helper = DailyRESTHelper(api_key=settings.DAILY_API_KEY)
+            daily_helper = DailyRESTHelper(daily_ api_key=settings.DAILY_API_KEY)
             room = await daily_helper.create_room(
                 DailyRoomParams(
                     name=f"mf-{user_id}",
