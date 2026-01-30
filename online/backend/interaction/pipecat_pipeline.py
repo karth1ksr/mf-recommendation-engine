@@ -33,10 +33,11 @@ from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
     TurnAnalyzerUserTurnStopStrategy,
 )
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.services.google.google_llm import GoogleLLMService
 
 # Project imports
 from online.backend.core.config import get_settings
-from online.backend.interaction.mf_processor import MFProcessor
+from online.backend.interaction.mf_tools import MutualFundTools
 
 load_dotenv(override=True)
 
@@ -55,11 +56,23 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     )
 
     # 2. Logic & Context
-    mf_processor = MFProcessor(db)
+    mf_tools = MutualFundTools(db)
     rtvi = RTVIProcessor()
     
+    # Define System Prompt
+    system_prompt = (
+        "You are a professional Mutual Fund Assistant. Your goal is to help users find suitable mutual funds. "
+        "1. You must collect the user's risk level (low, moderate, or high) and investment horizon (in years). "
+        "2. If either is missing, ask the user for it politely. "
+        "3. Once you have both, call 'get_recommendations' with the details. "
+        "4. If the user provides specific categories (like Equity, Debt, Hybrid), include them. "
+        "5. If the user asks to compare funds from the list (e.g., 'compare the first and second' or '1 and 3'), call 'compare_funds'. "
+        "6. Always explain why the recommended funds are good based on their metrics (CAGR, Consistency, etc.). "
+        "7. Keep your tone professional and helpful."
+    )
+
     # Simple context to keep track of conversation
-    context = LLMContext([])
+    context = LLMContext([{"role": "system", "content": system_prompt}])
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
@@ -69,14 +82,25 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         ),
     )
 
-    # 3. Pipeline
+    # 3. LLM Service
+    llm = GoogleLLMService(
+        model="gemini-2.5-flash-lite",
+        api_key=os.getenv("GEMINI_API_KEY")
+    )
+
+    # Register tools
+    llm.register_function("get_recommendations", mf_tools.get_recommendations)
+    llm.register_function("compare_funds", mf_tools.compare_funds)
+    llm.register_function("get_snapshot_status", mf_tools.get_snapshot_status)
+
+    # 4. Pipeline
     pipeline = Pipeline(
         [
             transport.input(),
             rtvi,
             stt,
             user_aggregator,  # Collects transcriptions
-            mf_processor,     # Our logic (Recommendation Engine)
+            llm,              # LLM handles intent and logic via tools
             tts,              # Voice output
             transport.output(),
             assistant_aggregator,
