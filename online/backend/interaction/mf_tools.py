@@ -19,7 +19,7 @@ class MutualFundTools:
             preferred_categories: Optional specific categories to filter (e.g., Equity, Debt).
         """
         logger.info(f"Tool Call: get_recommendations(risk={risk_level}, horizon={horizon}, categories={preferred_categories})")
-        
+
         # Update snapshot
         self.snapshot.update_from_preferences({
             "risk_level": risk_level,
@@ -35,11 +35,13 @@ class MutualFundTools:
 
         # Get recommendations from the engine
         recommendations = await self.recommender.get_recommendations(self.snapshot)
+        logger.info(f"Engine returned {len(recommendations) if isinstance(recommendations, list) else 0} recommendations")
         
         # Store for future reference (comparison/explanation)
         self.snapshot.last_recommendations = recommendations
         
         if not recommendations:
+            logger.warning("No recommendations found for this Snapshot")
             return "I couldn't find any funds matching those criteria in the database."
             
         return recommendations
@@ -72,6 +74,22 @@ class MutualFundTools:
             }
         except IndexError:
             return f"Invalid indices. I only have {len(self.snapshot.last_recommendations)} funds in the current list."
+
+    async def get_explanation(self):
+        """
+        Provides detailed metrics and rationale for the current recommendations when asked by the user.
+        """
+        logger.info("Tool Call: get_explanation")
+        if not self.snapshot.last_recommendations:
+            return "No funds have been recommended yet. Please ask for recommendations first."
+        
+        return {
+            "recommendations": self.snapshot.last_recommendations,
+            "context": {
+                "risk": self.snapshot.risk_level,
+                "horizon": self.snapshot.investment_horizon_years
+            }
+        }
 
     async def get_snapshot_status(self):
         """Returns the current state of collected user preferences."""

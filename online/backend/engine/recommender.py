@@ -90,8 +90,10 @@ class RecommendationEngine:
             cursor = self.db["fund_master"].aggregate(pipeline)
             funds_data = await cursor.to_list(length=1000)
             
+            logger.info(f"Aggregation found {len(funds_data)} total matches in fund_master")
+            
             if not funds_data:
-                logger.warning(f"No funds joined for patterns: {regex_pattern}")
+                logger.warning(f"No funds joined for patterns: {regex_pattern}. Check if categories match fund_master scheme_category values.")
                 return []
 
             # 3. Apply Weighting Logic in Python

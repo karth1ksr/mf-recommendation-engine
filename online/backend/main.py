@@ -9,13 +9,12 @@ if project_root not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from online.backend.core.config import get_settings
-from online.backend.api.routes import recommendations
 
 settings = get_settings()
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Deterministic Mutual Fund Recommendation Engine with LLM Explanations"
+    description="Pipecat-driven Mutual Fund Recommendation Engine"
 )
 
 # Enable CORS
@@ -31,8 +30,8 @@ app.add_middleware(
 async def health_check():
     return {"status": "healthy", "database": settings.DATABASE_NAME}
 
-# Include routers
-app.include_router(recommendations.router, prefix=settings.API_V1_STR, tags=["Recommendations"])
+# Health check
+@app.get("/health")
 
 if __name__ == "__main__":
     import uvicorn
