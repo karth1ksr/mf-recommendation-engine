@@ -11,8 +11,6 @@ const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
 let callInstance = null;
-let currentSessionId = localStorage.getItem("mf_session_id") || crypto.randomUUID();
-localStorage.setItem("mf_session_id", currentSessionId);
 
 closeCompBtn.addEventListener("click", () => {
     compModal.classList.add("hidden");
@@ -197,7 +195,7 @@ async function startVoiceCall() {
         const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
         const { room_url, session_id } = await response.json();
 
-        currentSessionId = session_id; // Sync with voice session
+        sessionId = session_id; // Sync with voice session
         localStorage.setItem("mf_session_id", session_id);
 
         if (!callInstance) {
@@ -217,8 +215,7 @@ async function startVoiceCall() {
     }
 }
 
-// Optional: Add the voice button back if you want to use it
-// const voiceBtn = document.getElementById("voice-btn");
-// if(voiceBtn) voiceBtn.addEventListener("click", startVoiceCall);
+const voiceBtn = document.getElementById("voice-btn");
+if (voiceBtn) voiceBtn.addEventListener("click", startVoiceCall);
 
 resetBtn.addEventListener("click", resetSession);

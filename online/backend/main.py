@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from online.backend.core.config import get_settings
 from online.backend.core.sessions import manager
+from loguru import logger
 import httpx
 import uuid
 
@@ -65,14 +66,20 @@ async def chat(request: ChatRequest):
         "message": "Here are some funds for you!"
     }
 
+import time
+
 async def create_daily_room():
     """Helper to create a Daily.co room via API"""
     headers = {"Authorization": f"Bearer {settings.DAILY_API_KEY}"}
+    
+    # exp must be a Unix timestamp (seconds since epoch)
+    expires_at = int(time.time()) + 3600 # Room expires in 1 hour
+    
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://api.daily.co/v1/rooms",
             headers=headers,
-            json={"properties": {"exp": 3600}} # Room expires in 1 hour
+            json={"properties": {"exp": expires_at}}
         )
         if resp.status_code == 200:
             return resp.json()["url"]
