@@ -30,7 +30,7 @@ from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
-from pipecat.transports.daily.transport import DailyParams
+from pipecat.transports.daily.transport import DailyParams, DailyTransport
 from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
     TurnAnalyzerUserTurnStopStrategy,
 )
@@ -44,200 +44,181 @@ from online.backend.interaction.mf_tools import MutualFundTools
 
 load_dotenv(override=True)
 
-async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
-    logger.info("Starting Mutual Fund Voice Bot")
-    
-    settings = get_settings()
-    client = AsyncIOMotorClient(settings.MONGODB_URL)
-    db = client[settings.DATABASE_NAME]
+from typing import Dict, Any, Optional
+import uuid
 
-    # 1. Services
-    stt = DeepgramSTTService(api_key=settings.DEEPGRAM_API_KEY)
-    tts = CartesiaTTSService(
-        api_key=settings.CARTESIA_API_KEY,
-        voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",
-    )
+class MutualFundBot:
+    """
+    Encapsulates a Pipecat pipeline and its state for a single user session.
+    Allows for multiple users to interact with the bot independently.
+    """
+    def __init__(self, session_id: str, db: AsyncIOMotorClient):
+        self.session_id = session_id
+        self.db = db
+        self.settings = get_settings()
+        self.task: Optional[PipelineTask] = None
+        self.pipeline: Optional[Pipeline] = None
+        self.mf_tools = MutualFundTools(db)
+        
+    async def _setup_pipeline(self, transport: BaseTransport):
+        # 1. Services
+        stt = DeepgramSTTService(api_key=self.settings.DEEPGRAM_API_KEY)
+        tts = CartesiaTTSService(
+            api_key=self.settings.CARTESIA_API_KEY,
+            voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",
+        )
 
-    # 2. Logic & Context
-    mf_tools = MutualFundTools(db)
-    rtvi = RTVIProcessor()
-    
-    # Tool definitions (using FunctionSchema and ToolsSchema)
-    get_recommendations_tool = FunctionSchema(
-        name="get_recommendations",
-        description="Fetches a ranked list of mutual funds based on the user's risk profile and investment horizon. Call this ONLY when you have both risk level and horizon.",
-        properties={
-            "risk_level": {
-                "type": "string",
-                "description": "The user's risk tolerance (low, moderate, or high).",
-                "enum": ["low", "moderate", "high"]
+        # 2. Logic & Context
+        rtvi = RTVIProcessor()
+        
+        get_recommendations_tool = FunctionSchema(
+            name="get_recommendations",
+            description="Fetches a ranked list of mutual funds based on the user's risk profile and investment horizon.",
+            properties={
+                "risk_level": {"type": "string", "enum": ["low", "moderate", "high"]},
+                "horizon": {"type": "integer"},
+                "preferred_categories": {"type": "array", "items": {"type": "string"}}
             },
-            "horizon": {
-                "type": "integer",
-                "description": "The investment period in years."
+            required=["risk_level", "horizon"]
+        )
+
+        compare_funds_tool = FunctionSchema(
+            name="compare_funds",
+            description="Compares two funds side-by-side using their indices.",
+            properties={
+                "index1": {"type": "integer"},
+                "index2": {"type": "integer"}
             },
-            "preferred_categories": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional specific categories to filter (e.g., Equity, Debt)."
-            }
-        },
-        required=["risk_level", "horizon"]
-    )
+            required=["index1", "index2"]
+        )
 
-    compare_funds_tool = FunctionSchema(
-        name="compare_funds",
-        description="Compares two funds from the recently suggested list side-by-side using their 1-based indices.",
-        properties={
-            "index1": {
-                "type": "integer",
-                "description": "The 1-based index of the first fund (e.g., 1 for the first one)."
-            },
-            "index2": {
-                "type": "integer",
-                "description": "The 1-based index of the second fund (e.g., 2 for the second one)."
-            }
-        },
-        required=["index1", "index2"]
-    )
+        get_explanation_tool = FunctionSchema(
+            name="get_explanation",
+            description="Provides detailed metrics and rationale for the recommendations.",
+            properties={},
+            required=[]
+        )
 
-    get_explanation_tool = FunctionSchema(
-        name="get_explanation",
-        description="Provides detailed metrics and rationale for the current recommendations when the user asks 'Why?' or 'Explain'.",
-        properties={},
-        required=[]
-    )
+        tools = ToolsSchema(standard_tools=[
+            get_recommendations_tool,
+            compare_funds_tool,
+            get_explanation_tool
+        ])
 
-    get_snapshot_status_tool = FunctionSchema(
-        name="get_snapshot_status",
-        description="Returns the current state of collected user preferences (risk level and horizon).",
-        properties={},
-        required=[]
-    )
+        system_prompt = (
+            "STRICT IDENTITY: You are a professional Mutual Fund Assistant. "
+            "YOUR CORE WORKFLOW: Identify risk level and horizon, then call 'get_recommendations'. "
+            "ONLY recommend funds returned by tools. Use 'get_explanation' only if asked 'Why?'."
+        )
 
-    tools = ToolsSchema(standard_tools=[
-        get_recommendations_tool,
-        compare_funds_tool,
-        get_explanation_tool,
-        get_snapshot_status_tool
-    ])
-
-    system_prompt = (
-        "STRICT IDENTITY: You are a professional Mutual Fund Assistant. You MUST strictly use the tools provided to fetch data. "
-        "YOUR CORE WORKFLOW: "
-        "1. Identify the user's risk level (low, moderate, high) and investment horizon (years). "
-        "2. As soon as you have BOTH values, IMMEDIATELY call 'get_recommendations'. Do NOT ask 'is this correct?' or for permission. "
-        "3. If the user confirms previously mentioned values (e.g., says 'yes', 'exactly'), call 'get_recommendations' using those values immediately. "
-        "DATA SOURCE RULE: You are ONLY allowed to recommend mutual funds returned by the 'get_recommendations' tool. "
-        "EXPLANATION POLICY: "
-        "- When providing results, give a brief list of the funds first. "
-        "- ONLY provide detailed rationale if the user asks 'Why?' or 'Explain'. Use the 'get_explanation' tool for this. "
-        "CONVERSATION RULES: "
-        "1. Use plain text only. No markdown symbols like asterisks (*) or hash signs (#). "
-        "2. Do NOT mention tool or function names to the user. "
-        "3. Keep your tone professional and natural for voice."
-    )
-
-    # Simple context to keep track of conversation, now including tools
-    context = LLMContext(
-        messages=[{"role": "system", "content": system_prompt}],
-        tools=tools
-    )
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context,
-        user_params=LLMUserAggregatorParams(
-            user_turn_strategies=UserTurnStrategies(
-                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())]
+        context = LLMContext(
+            messages=[{"role": "system", "content": system_prompt}],
+            tools=tools
+        )
+        
+        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())]
+                ),
             ),
-        ),
-    )
+        )
 
-    # 3. LLM Service
-    llm = GoogleLLMService(
-        model="gemini-2.5-flash-lite",
-        api_key=settings.GEMINI_API_KEY
-    )
+        # 3. LLM Service
+        llm = GoogleLLMService(
+            model="gemini-2.5-flash-lite",
+            api_key=self.settings.GEMINI_API_KEY
+        )
 
-    # Register tools using new FunctionCallParams pattern to fix DeprecationWarning
-    async def get_recommendations_handler(params: FunctionCallParams):
-        result = await mf_tools.get_recommendations(**params.arguments)
-        await params.result_callback(result)
+        # Handlers
+        async def get_reco_handler(params: FunctionCallParams):
+            res = await self.mf_tools.get_recommendations(**params.arguments)
+            await params.result_callback(res)
 
-    async def compare_funds_handler(params: FunctionCallParams):
-        result = await mf_tools.compare_funds(**params.arguments)
-        await params.result_callback(result)
+        async def compare_handler(params: FunctionCallParams):
+            res = await self.mf_tools.compare_funds(**params.arguments)
+            await params.result_callback(res)
 
-    async def get_explanation_handler(params: FunctionCallParams):
-        result = await mf_tools.get_explanation()
-        await params.result_callback(result)
+        async def explain_handler(params: FunctionCallParams):
+            res = await self.mf_tools.get_explanation()
+            await params.result_callback(res)
 
-    async def get_snapshot_status_handler(params: FunctionCallParams):
-        result = await mf_tools.get_snapshot_status()
-        await params.result_callback(result)
+        llm.register_function("get_recommendations", get_reco_handler)
+        llm.register_function("compare_funds", compare_handler)
+        llm.register_function("get_explanation", explain_handler)
 
-    llm.register_function("get_recommendations", get_recommendations_handler)
-    llm.register_function("compare_funds", compare_funds_handler)
-    llm.register_function("get_explanation", get_explanation_handler)
-    llm.register_function("get_snapshot_status", get_snapshot_status_handler)
-
-    # 4. Pipeline
-    pipeline = Pipeline(
-        [
+        # 4. Pipeline
+        self.pipeline = Pipeline([
             transport.input(),
             rtvi,
             stt,
-            user_aggregator,  # Collects transcriptions
-            llm,              # LLM handles intent and logic via tools
-            tts,              # Voice output
+            user_aggregator,
+            llm,
+            tts,
             transport.output(),
             assistant_aggregator,
-        ]
-    )
+        ])
 
-    task = PipelineTask(
-        pipeline,
-        params=PipelineParams(
-            enable_metrics=True,
-            enable_usage_metrics=True,
-        ),
-        observers=[RTVIObserver(rtvi)],
-    )
+        self.task = PipelineTask(
+            self.pipeline,
+            params=PipelineParams(enable_metrics=True),
+            observers=[RTVIObserver(rtvi)],
+        )
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, client):
-        logger.info("User connected!")
-        greeting = "Hello! I'm your Mutual Fund Assistant. To help you find the best funds, could you tell me your risk preference and how long you plan to invest?"
-        # Add greeting to context so the LLM remembers it
-        context.add_message({"role": "assistant", "content": greeting})
-        # Queue TextFrame to speak the greeting. Avoid LLMRunFrame here to prevent Gemini 400 error.
-        await task.queue_frames([TextFrame(greeting)])
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, client):
+            logger.info(f"Session {self.session_id}: User connected")
+            greeting = "Hello! I'm your Mutual Fund Assistant. How can I help you today?"
+            context.add_message({"role": "assistant", "content": greeting})
+            await self.task.queue_frames([TextFrame(greeting)])
 
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client):
-        logger.info("User disconnected")
-        await task.cancel()
+    async def push_text(self, text: str):
+        """
+        Allows pushing text directy into the pipeline (for text-based chat).
+        """
+        if self.task:
+            logger.debug(f"Pushing text to pipeline {self.session_id}: {text}")
+            await self.task.queue_frames([TextFrame(text)])
+        else:
+            logger.error(f"Cannot push text: Task not started for {self.session_id}")
 
-    runner = PipelineRunner(handle_sigint=runner_args.handle_sigint)
-    await runner.run(task)
+    async def run(self, transport: BaseTransport):
+        await self._setup_pipeline(transport)
+        runner = PipelineRunner(handle_sigint=False) # Runner doesn't exit on sigint here
+        await runner.run(self.task)
+
+async def start_bot_session(session_id: str, transport_type: str = "daily"):
+    """
+    Entry point to start a new bot session for a user.
+    """
+    settings = get_settings()
+    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    db = client[settings.DATABASE_NAME]
+    
+    bot = MutualFundBot(session_id, db)
+    
+    # Transport Setup (Daily as example)
+    if transport_type == "daily":
+        transport = DailyTransport(
+            room_url=f"https://daily.co/{session_id}",
+            token=None,
+            bot_name="MF Advisor",
+            params=DailyTransport.Params(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            )
+        )
+    else:
+        # Fallback or other transports
+        return None
+
+    logger.info(f"Starting pipeline for session: {session_id}")
+    await bot.run(transport)
     await client.close()
 
-async def bot(runner_args: RunnerArguments):
-    transport_params = {
-        "daily": lambda: DailyParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
-        ),
-        "webrtc": lambda: TransportParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
-        ),
-    }
-
-    transport = await create_transport(runner_args, transport_params)
-    await run_bot(transport, runner_args)
-
 if __name__ == "__main__":
-    from pipecat.runner.run import main
-    main()
+    # For local testing of a single session
+    import asyncio
+    asyncio.run(start_bot_session(str(uuid.uuid4()), "daily"))
