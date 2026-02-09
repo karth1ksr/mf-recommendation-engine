@@ -1,0 +1,17 @@
+{
+    "name": "mf-advisor-frontend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@pipecat-ai/client-js": "^0.3.0",
+        "@pipecat-ai/daily-transport": "^0.3.0"
+    },
+    "devDependencies": {
+        "vite": "^5.0.0"
+    }
+}
