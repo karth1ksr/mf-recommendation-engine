@@ -12,6 +12,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from online.backend.core.config import get_settings
 from online.backend.core.sessions import manager
+import httpx
+import uuid
 
 settings = get_settings()
 
@@ -61,6 +63,49 @@ async def chat(request: ChatRequest):
         "type": "recommendation",
         "data": result if isinstance(result, list) else [],
         "message": "Here are some funds for you!"
+    }
+
+async def create_daily_room():
+    """Helper to create a Daily.co room via API"""
+    headers = {"Authorization": f"Bearer {settings.DAILY_API_KEY}"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://api.daily.co/v1/rooms",
+            headers=headers,
+            json={"properties": {"exp": 3600}} # Room expires in 1 hour
+        )
+        if resp.status_code == 200:
+            return resp.json()["url"]
+        logger.error(f"Daily Room Error: {resp.text}")
+        return None
+
+@app.post("/api/v1/connect")
+async def connect(background_tasks: BackgroundTasks):
+    """
+    RTVI-compatible connect endpoint. 
+    1. Creates a room.
+    2. Spawns the bot.
+    3. Returns the room URL.
+    """
+    room_url = await create_daily_room()
+    if not room_url:
+        raise HTTPException(status_code=500, detail="Failed to create voice room")
+    
+    session_id = str(uuid.uuid4())
+    # Start the bot in the background
+    from online.backend.interaction.pipecat_pipeline import start_bot_session
+    background_tasks.add_task(start_bot_session, session_id, room_url)
+    
+    return {
+        "room_url": room_url,
+        "session_id": session_id,
+        "config": {
+            "services": {
+                "llm": "gemini",
+                "tts": "cartesia",
+                "stt": "deepgram"
+            }
+        }
     }
 
 @app.delete("/api/v1/session/{session_id}")

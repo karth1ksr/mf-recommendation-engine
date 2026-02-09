@@ -10,6 +10,9 @@ const compModal = document.getElementById("comp-modal");
 const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
+let callInstance = null;
+let currentSessionId = localStorage.getItem("mf_session_id") || crypto.randomUUID();
+localStorage.setItem("mf_session_id", currentSessionId);
 
 closeCompBtn.addEventListener("click", () => {
     compModal.classList.add("hidden");
@@ -187,5 +190,35 @@ userInput.addEventListener("keypress", (e) => {
         sendBtn.click();
     }
 });
+
+async function startVoiceCall() {
+    addMessage("Connecting to voice advisor... 🎤", "assistant");
+    try {
+        const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
+        const { room_url, session_id } = await response.json();
+
+        currentSessionId = session_id; // Sync with voice session
+        localStorage.setItem("mf_session_id", session_id);
+
+        if (!callInstance) {
+            // @ts-ignore - DailyIframe from CDN
+            callInstance = DailyIframe.createCallObject({
+                audioSource: true,
+                videoSource: false,
+            });
+        }
+
+        await callInstance.join({ url: room_url });
+        addMessage("Voice chat active! You can start speaking now.", "assistant");
+
+    } catch (err) {
+        console.error("Connection failed", err);
+        addMessage("Failed to connect to voice engine. Is the backend running?", "assistant");
+    }
+}
+
+// Optional: Add the voice button back if you want to use it
+// const voiceBtn = document.getElementById("voice-btn");
+// if(voiceBtn) voiceBtn.addEventListener("click", startVoiceCall);
 
 resetBtn.addEventListener("click", resetSession);

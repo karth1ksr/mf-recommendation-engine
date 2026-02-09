@@ -188,20 +188,17 @@ class MutualFundBot:
         runner = PipelineRunner(handle_sigint=False) # Runner doesn't exit on sigint here
         await runner.run(self.task)
 
-async def start_bot_session(session_id: str, transport_type: str = "daily"):
+async def start_bot_session(session_id: str, room_url: str):
     """
-    Entry point to start a new bot session for a user.
+    Spawns a bot instance and joins a specific Daily room.
     """
     settings = get_settings()
-    client = AsyncIOMotorClient(settings.MONGODB_URL)
-    db = client[settings.DATABASE_NAME]
-    
-    bot = MutualFundBot(session_id, db)
-    
-    # Transport Setup (Daily as example)
-    if transport_type == "daily":
+    async with AsyncIOMotorClient(settings.MONGODB_URL) as client:
+        db = client[settings.DATABASE_NAME]
+        bot = MutualFundBot(session_id, db)
+        
         transport = DailyTransport(
-            room_url=f"https://daily.co/{session_id}",
+            room_url=room_url,
             token=None,
             bot_name="MF Advisor",
             params=DailyTransport.Params(
@@ -210,15 +207,12 @@ async def start_bot_session(session_id: str, transport_type: str = "daily"):
                 vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
             )
         )
-    else:
-        # Fallback or other transports
-        return None
 
-    logger.info(f"Starting pipeline for session: {session_id}")
-    await bot.run(transport)
-    await client.close()
+        logger.info(f"Bot session {session_id} joining room: {room_url}")
+        await bot.run(transport)
 
 if __name__ == "__main__":
-    # For local testing of a single session
+    # For local testing
     import asyncio
-    asyncio.run(start_bot_session(str(uuid.uuid4()), "daily"))
+    # Note: Requires a valid DAILY_API_KEY to be set in config/env
+    print("Please use the /api/v1/connect endpoint to start sessions.")
