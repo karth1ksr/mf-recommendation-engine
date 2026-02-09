@@ -1,3 +1,6 @@
+import { PipecatClient } from "@pipecat-ai/client-js";
+import { DailyTransport } from "@pipecat-ai/daily-transport";
+
 const API_BASE = "http://localhost:8000/api/v1";
 let sessionId = localStorage.getItem("mf_session_id") || crypto.randomUUID();
 localStorage.setItem("mf_session_id", sessionId);
@@ -10,11 +13,21 @@ const compModal = document.getElementById("comp-modal");
 const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
-let callInstance = null;
+let pcClient = null;
+let isConnecting = false;
 
 closeCompBtn.addEventListener("click", () => {
     compModal.classList.add("hidden");
 });
+
+// --- Helper: Handle Bot Audio ---
+function handleBotAudio(track, participant) {
+    if (participant.local || track.kind !== "audio") return;
+    const audioElement = document.createElement("audio");
+    audioElement.srcObject = new MediaStream([track]);
+    document.body.appendChild(audioElement);
+    audioElement.play();
+}
 
 // --- UI Utilities ---
 
@@ -189,33 +202,56 @@ userInput.addEventListener("keypress", (e) => {
     }
 });
 
+
 async function startVoiceCall() {
-    addMessage("Connecting to voice advisor... 🎤", "assistant");
+    if (isConnecting) return;
+
+    if (pcClient) {
+        await pcClient.disconnect();
+        pcClient = null;
+        voiceBtn.style.color = "";
+        addMessage("Voice session ended.", "assistant");
+        return;
+    }
+
+    isConnecting = true;
+    addMessage("Connecting to Pipecat Voice Advisor... 🎤", "assistant");
     try {
         const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
         const { room_url, session_id } = await response.json();
 
-        sessionId = session_id; // Sync with voice session
+        sessionId = session_id;
         localStorage.setItem("mf_session_id", session_id);
 
-        if (!callInstance) {
-            // @ts-ignore - DailyIframe from CDN
-            callInstance = DailyIframe.createCallObject({
-                audioSource: true,
-                videoSource: false,
-            });
-        }
+        pcClient = new PipecatClient({
+            transport: new DailyTransport(),
+            enableMic: true,
+            callbacks: {
+                onTrackStarted: handleBotAudio,
+            },
+        });
 
-        await callInstance.join({ url: room_url });
-        addMessage("Voice chat active! You can start speaking now.", "assistant");
+        await pcClient.connect({ url: room_url });
+        addMessage("Voice advisor ready! You can speak now.", "assistant");
+        voiceBtn.style.color = "#ff4b2b";
 
     } catch (err) {
-        console.error("Connection failed", err);
-        addMessage("Failed to connect to voice engine. Is the backend running?", "assistant");
+        console.error("SDK Connection failed", err);
+        addMessage("Failed to start voice session. Check if backend is running.", "assistant");
+    } finally {
+        isConnecting = false;
     }
 }
 
 const voiceBtn = document.getElementById("voice-btn");
-if (voiceBtn) voiceBtn.addEventListener("click", startVoiceCall);
+if (voiceBtn) {
+    voiceBtn.addEventListener("click", startVoiceCall);
+}
+
+// Automatically join voice room as soon as page is ready
+window.addEventListener("load", () => {
+    // Small timeout to ensure everything is initialized
+    setTimeout(startVoiceCall, 800);
+});
 
 resetBtn.addEventListener("click", resetSession);

@@ -134,11 +134,16 @@ class MutualFundBot:
         # Handlers
         async def get_reco_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_recommendations(**params.arguments)
-            await params.result_callback(res)
+            # LLM expects a string or clear JSON structure
+            if isinstance(res, list):
+                res_str = "\n".join([f"{i+1}. {f['scheme_name']}" for i, f in enumerate(res)])
+                await params.result_callback(f"Found these funds:\n{res_str}")
+            else:
+                await params.result_callback(str(res))
 
         async def compare_handler(params: FunctionCallParams):
             res = await self.mf_tools.compare_funds(**params.arguments)
-            await params.result_callback(res)
+            await params.result_callback(str(res))
 
         async def explain_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_explanation()
@@ -166,12 +171,26 @@ class MutualFundBot:
             observers=[RTVIObserver(rtvi)],
         )
 
-        @transport.event_handler("on_client_connected")
-        async def on_client_connected(transport, client):
-            logger.info(f"Session {self.session_id}: User connected")
-            greeting = "Hello! I'm your Mutual Fund Assistant. How can I help you today?"
-            context.add_message({"role": "assistant", "content": greeting})
-            await self.task.queue_frames([TextFrame(greeting)])
+        self.greeted = False
+
+        @transport.event_handler("on_joined")
+        async def on_joined(transport, data):
+            logger.info(f"Bot session {self.session_id}: Joined room successfully")
+            if not self.greeted:
+                greeting = "Hello! I'm your Mutual Fund Assistant. I'm ready to help you find the best funds. What are your investment goals?"
+                context.add_message({"role": "assistant", "content": greeting})
+                await self.task.queue_frames([TextFrame(greeting)])
+                self.greeted = True
+
+        @transport.event_handler("on_participant_joined")
+        async def on_participant_joined(transport, participant):
+            logger.info(f"Participant joined: {participant['id']}")
+            # If bot joined first, greet when user arrives
+            if not self.greeted:
+                greeting = "Hello! I'm your Mutual Fund Assistant. Ready to discuss your portfolio!"
+                context.add_message({"role": "assistant", "content": greeting})
+                await self.task.queue_frames([TextFrame(greeting)])
+                self.greeted = True
 
     async def push_text(self, text: str):
         """
@@ -193,23 +212,24 @@ async def start_bot_session(session_id: str, room_url: str):
     Spawns a bot instance and joins a specific Daily room.
     """
     settings = get_settings()
-    async with AsyncIOMotorClient(settings.MONGODB_URL) as client:
-        db = client[settings.DATABASE_NAME]
-        bot = MutualFundBot(session_id, db)
-        
-        transport = DailyTransport(
-            room_url=room_url,
-            token=None,
-            bot_name="MF Advisor",
-            params=DailyTransport.Params(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
-            )
+    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    db = client[settings.DATABASE_NAME]
+    bot = MutualFundBot(session_id, db)
+    
+    transport = DailyTransport(
+        room_url=room_url,
+        token=None,
+        bot_name="MF Advisor",
+        params=DailyParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
         )
+    )
 
-        logger.info(f"Bot session {session_id} joining room: {room_url}")
-        await bot.run(transport)
+    logger.info(f"Bot session {session_id} joining room: {room_url}")
+    await bot.run(transport)
+    client.close()
 
 if __name__ == "__main__":
     # For local testing
