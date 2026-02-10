@@ -1,6 +1,3 @@
-import { PipecatClient } from "@pipecat-ai/client-js";
-import { DailyTransport } from "@pipecat-ai/daily-transport";
-
 const API_BASE = "http://localhost:8000/api/v1";
 let sessionId = localStorage.getItem("mf_session_id") || crypto.randomUUID();
 localStorage.setItem("mf_session_id", sessionId);
@@ -13,21 +10,11 @@ const compModal = document.getElementById("comp-modal");
 const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
-let pcClient = null;
-let isConnecting = false;
+let callInstance = null;
 
 closeCompBtn.addEventListener("click", () => {
     compModal.classList.add("hidden");
 });
-
-// --- Helper: Handle Bot Audio ---
-function handleBotAudio(track, participant) {
-    if (participant.local || track.kind !== "audio") return;
-    const audioElement = document.createElement("audio");
-    audioElement.srcObject = new MediaStream([track]);
-    document.body.appendChild(audioElement);
-    audioElement.play();
-}
 
 // --- UI Utilities ---
 
@@ -53,43 +40,83 @@ function removeLoading() {
     if (loader) loader.remove();
 }
 
-// --- API Calls ---
+// --- Unified Interaction Logic ---
+
+async function ensureConnected() {
+    if (callInstance && callInstance.meetingState() === "joined-meeting") {
+        return true;
+    }
+    addMessage("Connecting to the Mutual Fund Advisor...", "assistant");
+    try {
+        const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
+        const { room_url, session_id } = await response.json();
+
+        sessionId = session_id;
+        localStorage.setItem("mf_session_id", session_id);
+
+        if (!callInstance) {
+            // @ts-ignore
+            callInstance = DailyIframe.createCallObject({
+                audioSource: true,
+                videoSource: false,
+            });
+
+            // Handle incoming data from the Pipecat pipeline
+            callInstance.on("app-message", (evt) => {
+                const data = evt.data;
+                console.log("Pipeline Data Received:", data);
+
+                if (data.type === "recommendation") {
+                    const msg = data.message || "I've generated your personalized recommendations! ✨";
+                    addMessage(msg, "assistant");
+                    addMessage(renderFundList(data.data), "assistant fund-results");
+                } else if (data.type === "comparison_result") {
+                    addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
+                    showComparisonModal(data.funds, "The LLM is analyzing the specific differences between these options for you...", data.horizon);
+                } else if (data.type === "explanation") {
+                    // Explanations are often spoken, but we can log that tools were used
+                    console.log("Explanation metrics loaded:", data.data);
+                }
+            });
+
+            // Handle voice transcriptional text if we want captions
+            callInstance.on("app-message", (evt) => {
+                if (evt.data.type === "text") {
+                    addMessage(evt.data.text, "assistant");
+                }
+            });
+        }
+
+        await callInstance.join({ url: room_url });
+        addMessage("Connected! You can type your request or start speaking.", "assistant");
+        return true;
+    } catch (err) {
+        console.error("Connection failed", err);
+        addMessage("Connection error. Is the backend running?", "assistant");
+        return false;
+    }
+}
 
 async function sendMessage(text) {
+    const isConnected = await ensureConnected();
+    if (!isConnected) return;
+
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                session_id: sessionId,
-                text: text
-            })
-        });
+        // Send the text into the Pipecat pipeline as an RTVI action or app message
+        // The transport.input() in the backend will pick this up
+        await callInstance.sendAppMessage({
+            type: "text",
+            text: text
+        }, "*");
 
-        const data = await response.json();
         removeLoading();
-
-        if (data.type === "question") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "recommendation") {
-            const msg = data.message || "I've generated your personalized recommendations! ✨";
-            addMessage(msg, "assistant");
-            addMessage(renderFundList(data.data), "assistant fund-results");
-        } else if (data.type === "comparison_result") {
-            addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-            showComparisonModal(data.funds, data.text, data.horizon);
-        } else if (data.type === "explanation") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "message") {
-            addMessage(data.text, "assistant");
-        }
+        // We don't add the assistant message here because it will come back
+        // via the app-message listener or voice stream.
     } catch (error) {
         removeLoading();
-        addMessage("Sorry, I'm having trouble connecting to the engine. Is the backend running?", "assistant");
-        console.error("API Error:", error);
+        addMessage("Sorry, I'm having trouble sending that to the engine.", "assistant");
+        console.error("Pipeline send error:", error);
     }
 }
 
@@ -142,25 +169,27 @@ function showComparisonModal(funds, analysis, horizon) {
     `;
 
     compTableContainer.innerHTML = tableHtml;
-    // Simple newline to BR conversion for better formatting in modal
     const formattedAnalysis = analysis.replace(/\n/g, '<br>');
     compAnalysis.innerHTML = formattedAnalysis;
 
     if (compModal) {
         compModal.classList.remove("hidden");
-        compModal.style.display = "flex"; // Ensure it shows
+        compModal.style.display = "flex";
     }
 }
 
 async function resetSession() {
     try {
+        if (callInstance) {
+            await callInstance.leave();
+        }
         await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
         localStorage.removeItem("mf_session_id");
         sessionId = crypto.randomUUID();
         localStorage.setItem("mf_session_id", sessionId);
         chatWindow.innerHTML = `
             <div class="message assistant">
-                <p>Session reset. How can I help you find mutual funds today?</p>
+                <p>Advisor reset. Describe your investment goals to start.</p>
             </div>
         `;
     } catch (err) {
@@ -202,56 +231,7 @@ userInput.addEventListener("keypress", (e) => {
     }
 });
 
-
-async function startVoiceCall() {
-    if (isConnecting) return;
-
-    if (pcClient) {
-        await pcClient.disconnect();
-        pcClient = null;
-        voiceBtn.style.color = "";
-        addMessage("Voice session ended.", "assistant");
-        return;
-    }
-
-    isConnecting = true;
-    addMessage("Connecting to Pipecat Voice Advisor... 🎤", "assistant");
-    try {
-        const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
-        const { room_url, session_id } = await response.json();
-
-        sessionId = session_id;
-        localStorage.setItem("mf_session_id", session_id);
-
-        pcClient = new PipecatClient({
-            transport: new DailyTransport(),
-            enableMic: true,
-            callbacks: {
-                onTrackStarted: handleBotAudio,
-            },
-        });
-
-        await pcClient.connect({ url: room_url });
-        addMessage("Voice advisor ready! You can speak now.", "assistant");
-        voiceBtn.style.color = "#ff4b2b";
-
-    } catch (err) {
-        console.error("SDK Connection failed", err);
-        addMessage("Failed to start voice session. Check if backend is running.", "assistant");
-    } finally {
-        isConnecting = false;
-    }
-}
-
 const voiceBtn = document.getElementById("voice-btn");
-if (voiceBtn) {
-    voiceBtn.addEventListener("click", startVoiceCall);
-}
-
-// Automatically join voice room as soon as page is ready
-window.addEventListener("load", () => {
-    // Small timeout to ensure everything is initialized
-    setTimeout(startVoiceCall, 800);
-});
+if (voiceBtn) voiceBtn.addEventListener("click", ensureConnected);
 
 resetBtn.addEventListener("click", resetSession);

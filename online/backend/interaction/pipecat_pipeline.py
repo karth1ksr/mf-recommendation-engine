@@ -13,7 +13,7 @@ if project_root not in sys.path:
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TextFrame, LLMRunFrame
+from pipecat.frames.frames import TextFrame, LLMRunFrame, TransportMessageFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -134,19 +134,31 @@ class MutualFundBot:
         # Handlers
         async def get_reco_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_recommendations(**params.arguments)
-            # LLM expects a string or clear JSON structure
-            if isinstance(res, list):
-                res_str = "\n".join([f"{i+1}. {f['scheme_name']}" for i, f in enumerate(res)])
-                await params.result_callback(f"Found these funds:\n{res_str}")
-            else:
-                await params.result_callback(str(res))
+            # Push structured data to the frontend via transport
+            await self.task.queue_frames([TransportMessageFrame(message={
+                "type": "recommendation",
+                "data": res,
+                "message": f"I've found {len(res)} funds for you!"
+            })])
+            await params.result_callback(res)
 
         async def compare_handler(params: FunctionCallParams):
             res = await self.mf_tools.compare_funds(**params.arguments)
-            await params.result_callback(str(res))
+            # Push comparison data
+            await self.task.queue_frames([TransportMessageFrame(message={
+                "type": "comparison_result",
+                "funds": [res["fund_a"], res["fund_b"]],
+                "horizon": res["analysis_context"]["horizon"]
+            })])
+            await params.result_callback(res)
 
         async def explain_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_explanation()
+            # Push explanation context if needed
+            await self.task.queue_frames([TransportMessageFrame(message={
+                "type": "explanation",
+                "data": res
+            })])
             await params.result_callback(res)
 
         llm.register_function("get_recommendations", get_reco_handler)
@@ -171,26 +183,20 @@ class MutualFundBot:
             observers=[RTVIObserver(rtvi)],
         )
 
-        self.greeted = False
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, client):
+            logger.info(f"Session {self.session_id}: User connected")
+            greeting = "Hello! I'm your Mutual Fund Assistant. How can I help you today?"
+            context.add_message({"role": "assistant", "content": greeting})
+            await self.task.queue_frames([TextFrame(greeting)])
 
-        @transport.event_handler("on_joined")
-        async def on_joined(transport, data):
-            logger.info(f"Bot session {self.session_id}: Joined room successfully")
-            if not self.greeted:
-                greeting = "Hello! I'm your Mutual Fund Assistant. I'm ready to help you find the best funds. What are your investment goals?"
-                context.add_message({"role": "assistant", "content": greeting})
-                await self.task.queue_frames([TextFrame(greeting)])
-                self.greeted = True
-
-        @transport.event_handler("on_participant_joined")
-        async def on_participant_joined(transport, participant):
-            logger.info(f"Participant joined: {participant['id']}")
-            # If bot joined first, greet when user arrives
-            if not self.greeted:
-                greeting = "Hello! I'm your Mutual Fund Assistant. Ready to discuss your portfolio!"
-                context.add_message({"role": "assistant", "content": greeting})
-                await self.task.queue_frames([TextFrame(greeting)])
-                self.greeted = True
+        @transport.event_handler("on_app_message")
+        async def on_app_message(transport, message, sender):
+            """Bridge for text-based chat over the transport channel."""
+            if isinstance(message, dict) and message.get("type") == "text":
+                text = message.get("text")
+                logger.debug(f"Received text message via transport: {text}")
+                await self.task.queue_frames([TextFrame(text)])
 
     async def push_text(self, text: str):
         """
@@ -228,8 +234,10 @@ async def start_bot_session(session_id: str, room_url: str):
     )
 
     logger.info(f"Bot session {session_id} joining room: {room_url}")
-    await bot.run(transport)
-    client.close()
+    try:
+        await bot.run(transport)
+    finally:
+        client.close()
 
 if __name__ == "__main__":
     # For local testing

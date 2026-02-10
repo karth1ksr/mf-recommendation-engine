@@ -33,39 +33,6 @@ app.add_middleware(
 )
 
 
-
-class ChatRequest(BaseModel):
-    session_id: str
-    text: str
-
-class ChatResponse(BaseModel):
-    type: str
-    text: Optional[str] = None
-    data: Optional[List[dict]] = None
-    message: Optional[str] = None
-
-@app.post("/api/v1/chat")
-async def chat(request: ChatRequest):
-    """
-    Handles text-based chat by routing to a specific user session.
-    """
-    bot = await manager.get_or_create_session(request.session_id)
-    
-    # For now, we will use the tools directly to get a response for the REST API
-    # In a full Pipecat integration, you'd capture the pipeline's output frames.
-    
-    # Simple manual routing to simulate the bot's behavior for the text UI
-    # This ensures each user has their OWN MutualFundTools/Snapshot
-    result = await bot.mf_tools.get_recommendations(risk_level="low", horizon=5) # Example default or parse from text
-    
-    # Note: A real implementation would use the LLM to process request.text
-    # but for this specific request, we are enabling MULTIPLE USERS.
-    return {
-        "type": "recommendation",
-        "data": result if isinstance(result, list) else [],
-        "message": "Here are some funds for you!"
-    }
-
 import time
 
 async def create_daily_room():
