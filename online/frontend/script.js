@@ -235,7 +235,26 @@ userInput.addEventListener("keypress", (e) => {
 });
 
 const voiceBtn = document.getElementById("voice-btn");
-if (voiceBtn) voiceBtn.addEventListener("click", ensureConnected);
+let isMuted = false;
+
+async function toggleMic() {
+    if (!callInstance) {
+        await ensureConnected();
+        return;
+    }
+
+    isMuted = !isMuted;
+    await callInstance.setLocalAudio(!isMuted);
+
+    // Update UI
+    voiceBtn.innerHTML = isMuted ? "🔇" : "🎤";
+    voiceBtn.title = isMuted ? "Unmute Mic" : "Mute Mic";
+    voiceBtn.classList.toggle("muted", isMuted);
+
+    addMessage(isMuted ? "Microphone muted." : "Microphone unmuted.", "assistant");
+}
+
+if (voiceBtn) voiceBtn.addEventListener("click", toggleMic);
 
 resetBtn.addEventListener("click", resetSession);
 

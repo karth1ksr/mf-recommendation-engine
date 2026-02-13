@@ -179,10 +179,14 @@ main#chat-window::-webkit-scrollbar-thumb {
     transition: all 0.3s ease;
 }
 
-#send-btn:hover {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+#voice-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.1);
+}
+
+#voice-btn.muted {
+    opacity: 0.5;
+    filter: grayscale(1);
 }
 
 /* Inline Chat Fund Styles */
