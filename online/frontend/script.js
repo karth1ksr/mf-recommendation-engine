@@ -43,6 +43,23 @@ function addMessage(text, role) {
 
     lastRole = role;
     chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    // Sync with comparison modal if open
+    if (role === "assistant" && compModal && !compModal.classList.contains("hidden")) {
+        // Limit sync to non-special messages (actual text)
+        if (!isSpecial) {
+            const formattedText = text.replace(/\n/g, '<br>');
+            if (compAnalysis) {
+                // If it's an append, we might want to append here too, 
+                // but let's just keep the latest insight or everything for now.
+                if (lastRole === "assistant") {
+                    compAnalysis.innerHTML += " " + formattedText;
+                } else {
+                    compAnalysis.innerHTML = formattedText;
+                }
+            }
+        }
+    }
 }
 
 function showLoading() {
@@ -115,7 +132,7 @@ async function ensureConnected() {
                 }
                 else if (msg.type === "comparison_result") {
                     addMessage("Opening the comparison window...", "assistant");
-                    showComparisonModal(msg.funds, "Analyzing...", msg.horizon);
+                    showComparisonModal(msg.funds, msg.analysis || "Analyzing...", msg.horizon);
                 }
             });
         }

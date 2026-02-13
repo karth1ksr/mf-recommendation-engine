@@ -87,10 +87,10 @@ class MutualFundBot:
 
         compare_funds_tool = FunctionSchema(
             name="compare_funds",
-            description="Compares two funds side-by-side using their indices.",
+            description="Compares two specific funds side-by-side using their 1-based indices from the recommended list (e.g., 1 and 2).",
             properties={
-                "index1": {"type": "integer"},
-                "index2": {"type": "integer"}
+                "index1": {"type": "integer", "description": "The rank/index of the first fund (e.g., 1)"},
+                "index2": {"type": "integer", "description": "The rank/index of the second fund (e.g., 2)"}
             },
             required=["index1", "index2"]
         )
@@ -111,8 +111,11 @@ class MutualFundBot:
         system_prompt = (
             "STRICT IDENTITY: You are a professional Mutual Fund Assistant. "
             "YOUR CORE WORKFLOW: Identify risk level and horizon, then call 'get_recommendations'. "
-            "ONLY recommend funds returned by tools. Use 'get_explanation' only if asked 'Why?'."
-            "DO NOT ADD any symbols to highlight text in the output. The OUTPUT will be converted from TTS"
+            "UI BEHAVIOR: "
+            "1. Recommendations: UI shows cards. Call 'get_recommendations' and then be SILENT (no text/speech). "
+            "2. Comparison: UI shows a side-by-side table. Call 'compare_funds' using 1-based ranks (1, 2, 3...). "
+            "   After calling, provide a brief 2-sentence insight on the key differentiator. This will appear in the UI."
+            "3. General: Keep all speech/text responses under 3 sentences. Avoid symbols, markdown, or lists."
         )
 
         context = LLMContext(
@@ -142,12 +145,16 @@ class MutualFundBot:
             await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "recommendation",
                 "data": res,
-                "message": f"I've found {len(res)} funds for you!"
+                "message": "Here are the recommended funds for your preference!"
             })])
             await params.result_callback(res)
 
         async def compare_handler(params: FunctionCallParams):
             res = await self.mf_tools.compare_funds(**params.arguments)
+            if isinstance(res, str):
+                await params.result_callback(res)
+                return
+
             # Push comparison data
             await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "comparison_result",
