@@ -201,10 +201,13 @@ class MutualFundBot:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"Session {self.session_id}: User connected")
-            greeting = "Hello! I'm your Mutual Fund Assistant. How can I help you today?"
+            # 1. Prepare the greeting
+            greeting = "Hello! I'm your professional Mutual Fund Assistant. How can I help you today?"
+            
+            # 2. Add to context so the LLM 'remembers' it said this
             context.add_message({"role": "assistant", "content": greeting})
-            # Pushing a TextFrame into the pipeline handles both UI Text (via TextMessenger)
-            # and Audio (via TTS) automatically. "Nothing extra."
+            
+            # 3. Queue the frame to trigger TTS and UI update
             await self.task.queue_frames([TextFrame(greeting)])
 
 
