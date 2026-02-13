@@ -13,7 +13,8 @@ if project_root not in sys.path:
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TextFrame, LLMRunFrame, TransportMessageFrame
+from pipecat.frames.frames import Frame, TextFrame, LLMRunFrame, OutputTransportMessageFrame, TranscriptionFrame
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -46,6 +47,16 @@ load_dotenv(override=True)
 
 from typing import Dict, Any, Optional
 import uuid
+
+class TextMessenger(FrameProcessor):
+    """Intercepts TextFrames and sends them to the frontend for the chat UI."""
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TextFrame) and direction == FrameDirection.DOWNSTREAM:
+            await self.push_frame(OutputTransportMessageFrame(message={
+                "type": "text",
+                "text": frame.text
+            }))
 
 class MutualFundBot:
     """
@@ -135,7 +146,7 @@ class MutualFundBot:
         async def get_reco_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_recommendations(**params.arguments)
             # Push structured data to the frontend via transport
-            await self.task.queue_frames([TransportMessageFrame(message={
+            await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "recommendation",
                 "data": res,
                 "message": f"I've found {len(res)} funds for you!"
@@ -145,7 +156,7 @@ class MutualFundBot:
         async def compare_handler(params: FunctionCallParams):
             res = await self.mf_tools.compare_funds(**params.arguments)
             # Push comparison data
-            await self.task.queue_frames([TransportMessageFrame(message={
+            await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "comparison_result",
                 "funds": [res["fund_a"], res["fund_b"]],
                 "horizon": res["analysis_context"]["horizon"]
@@ -155,32 +166,36 @@ class MutualFundBot:
         async def explain_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_explanation()
             # Push explanation context if needed
-            await self.task.queue_frames([TransportMessageFrame(message={
+            await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "explanation",
                 "data": res
             })])
             await params.result_callback(res)
+
+        # handlers ... (rest of configuration)
+        text_messenger = TextMessenger()
 
         llm.register_function("get_recommendations", get_reco_handler)
         llm.register_function("compare_funds", compare_handler)
         llm.register_function("get_explanation", explain_handler)
 
         # 4. Pipeline
+        # Standard flow: Input -> Logic/State -> Output
         self.pipeline = Pipeline([
             transport.input(),
             rtvi,
             stt,
             user_aggregator,
             llm,
+            assistant_aggregator,
+            text_messenger,
             tts,
             transport.output(),
-            assistant_aggregator,
         ])
 
         self.task = PipelineTask(
             self.pipeline,
             params=PipelineParams(enable_metrics=True),
-            observers=[RTVIObserver(rtvi)],
         )
 
         @transport.event_handler("on_client_connected")
@@ -188,6 +203,8 @@ class MutualFundBot:
             logger.info(f"Session {self.session_id}: User connected")
             greeting = "Hello! I'm your Mutual Fund Assistant. How can I help you today?"
             context.add_message({"role": "assistant", "content": greeting})
+            # Pushing a TextFrame into the pipeline handles both UI Text (via TextMessenger)
+            # and Audio (via TTS) automatically. "Nothing extra."
             await self.task.queue_frames([TextFrame(greeting)])
 
         @transport.event_handler("on_app_message")
@@ -196,7 +213,9 @@ class MutualFundBot:
             if isinstance(message, dict) and message.get("type") == "text":
                 text = message.get("text")
                 logger.debug(f"Received text message via transport: {text}")
-                await self.task.queue_frames([TextFrame(text)])
+                # TranscriptionFrame makes the LLM 'hear' the text as if spoken.
+                # 'text' must be a string, not a dictionary.
+                await self.task.queue_frames([TranscriptionFrame(text=text, user_id=sender, timestamp="")])
 
     async def push_text(self, text: str):
         """

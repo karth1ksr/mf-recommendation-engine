@@ -61,28 +61,31 @@ async function ensureConnected() {
                 videoSource: false,
             });
 
-            // Handle incoming data from the Pipecat pipeline
+            // Handle audio tracks so we can actually hear the bot
+            callInstance.on("track-started", (evt) => {
+                if (evt.participant.local) return;
+                if (evt.track.kind === "audio") {
+                    const audio = document.createElement("audio");
+                    audio.srcObject = new MediaStream([evt.track]);
+                    audio.autoplay = true;
+                    document.body.appendChild(audio);
+                }
+            });
+
+            // Unified handler for data from the Pipecat pipeline
             callInstance.on("app-message", (evt) => {
                 const data = evt.data;
-                console.log("Pipeline Data Received:", data);
+                console.log("Pipeline Data:", data);
 
-                if (data.type === "recommendation") {
+                if (data.type === "text") {
+                    addMessage(data.text, "assistant");
+                } else if (data.type === "recommendation") {
                     const msg = data.message || "I've generated your personalized recommendations! ✨";
                     addMessage(msg, "assistant");
                     addMessage(renderFundList(data.data), "assistant fund-results");
                 } else if (data.type === "comparison_result") {
                     addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-                    showComparisonModal(data.funds, "The LLM is analyzing the specific differences between these options for you...", data.horizon);
-                } else if (data.type === "explanation") {
-                    // Explanations are often spoken, but we can log that tools were used
-                    console.log("Explanation metrics loaded:", data.data);
-                }
-            });
-
-            // Handle voice transcriptional text if we want captions
-            callInstance.on("app-message", (evt) => {
-                if (evt.data.type === "text") {
-                    addMessage(evt.data.text, "assistant");
+                    showComparisonModal(data.funds, "The LLM is analyzing the data for you...", data.horizon);
                 }
             });
         }
