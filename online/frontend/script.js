@@ -238,3 +238,8 @@ const voiceBtn = document.getElementById("voice-btn");
 if (voiceBtn) voiceBtn.addEventListener("click", ensureConnected);
 
 resetBtn.addEventListener("click", resetSession);
+
+// Automatically connect on page load
+window.addEventListener("load", () => {
+    ensureConnected();
+});
