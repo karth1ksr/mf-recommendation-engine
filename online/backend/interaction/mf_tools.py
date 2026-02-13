@@ -3,11 +3,37 @@ from online.backend.engine.user_snapshot import UserSnapshot
 from online.backend.engine.recommender import RecommendationEngine
 
 class MutualFundTools:
-    def __init__(self, db):
+    def __init__(self, db, session_id: str):
         self.db = db
+        self.session_id = session_id
         self.recommender = RecommendationEngine(db)
         self.snapshot = UserSnapshot()
-        logger.info("MutualFundTools initialized with UserSnapshot")
+        logger.info(f"MutualFundTools initialized for session {session_id}")
+
+    async def save_snapshot(self):
+        """Persists the current snapshot to MongoDB."""
+        snapshot_data = {
+            "session_id": self.session_id,
+            "risk_level": self.snapshot.risk_level,
+            "horizon": self.snapshot.investment_horizon_years,
+            "preferred_categories": self.snapshot.preferred_categories,
+            "updated_at": "now" # In a real app, use datetime.utcnow()
+        }
+        await self.db.user_sessions.update_one(
+            {"session_id": self.session_id},
+            {"$set": snapshot_data},
+            upsert=True
+        )
+        logger.info(f"Snapshot saved for {self.session_id}")
+
+    async def load_snapshot(self):
+        """Loads the snapshot from MongoDB."""
+        data = await self.db.user_sessions.find_one({"session_id": self.session_id})
+        if data:
+            self.snapshot.risk_level = data.get("risk_level")
+            self.snapshot.investment_horizon_years = data.get("horizon")
+            self.snapshot.preferred_categories = data.get("preferred_categories")
+            logger.info(f"Snapshot loaded for {self.session_id}: {self.snapshot}")
 
     async def get_recommendations(self, risk_level: str, horizon: int, preferred_categories: list[str] = None):
         """
@@ -26,6 +52,7 @@ class MutualFundTools:
             "investment_horizon_years": horizon,
             "categories": preferred_categories
         })
+        await self.save_snapshot()
         
         if not self.snapshot.is_complete():
             missing = []

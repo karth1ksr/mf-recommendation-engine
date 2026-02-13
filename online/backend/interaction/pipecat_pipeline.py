@@ -69,7 +69,7 @@ class MutualFundBot:
         self.settings = get_settings()
         self.task: Optional[PipelineTask] = None
         self.pipeline: Optional[Pipeline] = None
-        self.mf_tools = MutualFundTools(db)
+        self.mf_tools = MutualFundTools(db, session_id)
         
     async def _setup_pipeline(self, transport: BaseTransport):
         # 1. Services
@@ -201,13 +201,18 @@ class MutualFundBot:
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
             logger.info(f"Session {self.session_id}: User connected")
-            # 1. Prepare the greeting
+            
+            # 1. Load existing snapshot if any
+            await self.mf_tools.load_snapshot()
+            
+            # 2. Add current state to context so LLM knows what we already have
+            if self.mf_tools.snapshot.risk_level or self.mf_tools.snapshot.investment_horizon_years:
+                status = f"System: User has existing profile: {self.mf_tools.snapshot}"
+                context.add_message({"role": "system", "content": status})
+
+            # 3. Prepare the greeting
             greeting = "Hello! I'm your professional Mutual Fund Assistant. How can I help you today?"
-            
-            # 2. Add to context so the LLM 'remembers' it said this
             context.add_message({"role": "assistant", "content": greeting})
-            
-            # 3. Queue the frame to trigger TTS and UI update
             await self.task.queue_frames([TextFrame(greeting)])
 
 
