@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 from dotenv import load_dotenv
 from loguru import logger
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -48,15 +49,6 @@ load_dotenv(override=True)
 from typing import Dict, Any, Optional
 import uuid
 
-class TextMessenger(FrameProcessor):
-    """Intercepts TextFrames and sends them to the frontend for the chat UI."""
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TextFrame) and direction == FrameDirection.DOWNSTREAM:
-            await self.push_frame(OutputTransportMessageFrame(message={
-                "type": "text",
-                "text": frame.text
-            }))
 
 class MutualFundBot:
     """
@@ -120,6 +112,7 @@ class MutualFundBot:
             "STRICT IDENTITY: You are a professional Mutual Fund Assistant. "
             "YOUR CORE WORKFLOW: Identify risk level and horizon, then call 'get_recommendations'. "
             "ONLY recommend funds returned by tools. Use 'get_explanation' only if asked 'Why?'."
+            "DO NOT ADD any symbols to highlight text in the output. The OUTPUT will be converted from TTS"
         )
 
         context = LLMContext(
@@ -138,14 +131,14 @@ class MutualFundBot:
 
         # 3. LLM Service
         llm = GoogleLLMService(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.5-flash",
             api_key=self.settings.GEMINI_API_KEY
         )
 
         # Handlers
         async def get_reco_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_recommendations(**params.arguments)
-            # Push structured data to the frontend via transport
+            # Push structured data directly (Standard format for our frontend)
             await self.task.queue_frames([OutputTransportMessageFrame(message={
                 "type": "recommendation",
                 "data": res,
@@ -173,8 +166,6 @@ class MutualFundBot:
             await params.result_callback(res)
 
         # handlers ... (rest of configuration)
-        text_messenger = TextMessenger()
-
         llm.register_function("get_recommendations", get_reco_handler)
         llm.register_function("compare_funds", compare_handler)
         llm.register_function("get_explanation", explain_handler)
@@ -188,7 +179,6 @@ class MutualFundBot:
             user_aggregator,
             llm,
             assistant_aggregator,
-            text_messenger,
             tts,
             transport.output(),
         ])
@@ -197,23 +187,36 @@ class MutualFundBot:
             self.pipeline,
             params=PipelineParams(enable_metrics=True),
         )
+        rtvi_observer = RTVIObserver(rtvi=rtvi)
+        self.task.add_observer(rtvi_observer)
 
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
-            logger.info(f"Session {self.session_id}: User connected")
+            logger.info(f"Session {self.session_id}: User connected. Waiting for transport stabilization...")
             
-            # 1. Load existing snapshot if any
+            # 1. Stabilization wait to ensure data channel is 100% ready
+            await asyncio.sleep(2)
+            
+            # 2. Sync state
             await self.mf_tools.load_snapshot()
             
-            # 2. Add current state to context so LLM knows what we already have
-            if self.mf_tools.snapshot.risk_level or self.mf_tools.snapshot.investment_horizon_years:
-                status = f"System: User has existing profile: {self.mf_tools.snapshot}"
-                context.add_message({"role": "system", "content": status})
-
-            # 3. Prepare the greeting
+            # 3. Push a direct UI message for the greeting to ensure it's not lost
             greeting = "Hello! I'm your professional Mutual Fund Assistant. How can I help you today?"
+            await self.task.queue_frames([
+                OutputTransportMessageFrame(message={
+                    "type": "text",
+                    "text": greeting
+                }),
+                TextFrame(greeting)
+            ])
+            
+            # 4. Update LLM context
             context.add_message({"role": "assistant", "content": greeting})
-            await self.task.queue_frames([TextFrame(greeting)])
+            if self.mf_tools.snapshot.risk_level:
+                status = f"System: Loaded user profile: {self.mf_tools.snapshot}"
+                context.add_message({"role": "system", "content": status})
+            
+            logger.info(f"Session {self.session_id}: Pipeline greeting sent.")
 
 
     async def push_text(self, text: str):

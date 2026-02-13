@@ -18,11 +18,30 @@ closeCompBtn.addEventListener("click", () => {
 
 // --- UI Utilities ---
 
+let lastRole = null;
+let lastMessageDiv = null;
+
 function addMessage(text, role) {
-    const div = document.createElement("div");
-    div.className = `message ${role}`;
-    div.innerHTML = `<p>${text}</p>`;
-    chatWindow.appendChild(div);
+    // If it's a special result bubble (like fund-results), always create new
+    const isSpecial = role.includes("fund-results");
+
+    if (role === "assistant" && lastRole === "assistant" && lastMessageDiv && !isSpecial) {
+        // Find the paragraph and append text with a space
+        const p = lastMessageDiv.querySelector("p");
+        if (p) {
+            p.innerHTML += " " + text;
+        } else {
+            lastMessageDiv.innerHTML += `<p>${text}</p>`;
+        }
+    } else {
+        const div = document.createElement("div");
+        div.className = `message ${role}`;
+        div.innerHTML = `<p>${text}</p>`;
+        chatWindow.appendChild(div);
+        lastMessageDiv = div;
+    }
+
+    lastRole = role;
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
@@ -42,11 +61,15 @@ function removeLoading() {
 
 // --- Unified Interaction Logic ---
 
+let isConnecting = false;
+
 async function ensureConnected() {
+    if (isConnecting) return false;
     if (callInstance && callInstance.meetingState() === "joined-meeting") {
         return true;
     }
-    addMessage("Connecting to the Mutual Fund Advisor...", "assistant");
+
+    isConnecting = true;
     try {
         const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
         const { room_url, session_id } = await response.json();
@@ -61,7 +84,6 @@ async function ensureConnected() {
                 videoSource: false,
             });
 
-            // Handle audio tracks so we can actually hear the bot
             callInstance.on("track-started", (evt) => {
                 if (evt.participant.local) return;
                 if (evt.track.kind === "audio") {
@@ -72,30 +94,39 @@ async function ensureConnected() {
                 }
             });
 
-            // Unified handler for data from the Pipecat pipeline
             callInstance.on("app-message", (evt) => {
-                const data = evt.data;
-                console.log("Pipeline Data:", data);
+                console.log("Raw App Message Event:", evt);
+                const msg = evt.data;
+                console.log("Extracted Payload:", msg);
 
-                if (data.type === "text") {
-                    addMessage(data.text, "assistant");
-                } else if (data.type === "recommendation") {
-                    const msg = data.message || "I've generated your personalized recommendations! ✨";
-                    addMessage(msg, "assistant");
-                    addMessage(renderFundList(data.data), "assistant fund-results");
-                } else if (data.type === "comparison_result") {
-                    addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-                    showComparisonModal(data.funds, "The LLM is analyzing the data for you...", data.horizon);
+                // --- 1. Aggressive Text Detection ---
+                const botText = msg.data?.text || msg.text || msg.data?.content || msg.message?.text;
+                const isTextType = ["bot-tts-text", "bot-llm-text", "text"].includes(msg.type);
+
+                if (botText && isTextType) {
+                    addMessage(botText, "assistant");
+                    return;
+                }
+
+                // --- 2. Structured Data Detection ---
+                if (msg.type === "recommendation") {
+                    addMessage(msg.message || "I've found these recommendations:", "assistant");
+                    addMessage(renderFundList(msg.data), "assistant fund-results");
+                }
+                else if (msg.type === "comparison_result") {
+                    addMessage("Opening the comparison window...", "assistant");
+                    showComparisonModal(msg.funds, "Analyzing...", msg.horizon);
                 }
             });
         }
 
         await callInstance.join({ url: room_url });
-        addMessage("Connected! You can type your request or start speaking.", "assistant");
+        isConnecting = false;
         return true;
     } catch (err) {
+        isConnecting = false;
         console.error("Connection failed", err);
-        addMessage("Connection error. Is the backend running?", "assistant");
+        addMessage("Connection error.", "assistant");
         return false;
     }
 }
@@ -106,20 +137,18 @@ async function sendMessage(text) {
 
     showLoading();
     try {
-        // Send the text into the Pipecat pipeline as an RTVI action or app message
-        // The transport.input() in the backend will pick this up
         await callInstance.sendAppMessage({
-            type: "text",
-            text: text
+            id: crypto.randomUUID(),
+            label: "rtvi-ai",
+            type: "send-text",
+            data: {
+                content: text
+            }
         }, "*");
-
         removeLoading();
-        // We don't add the assistant message here because it will come back
-        // via the app-message listener or voice stream.
     } catch (error) {
         removeLoading();
-        addMessage("Sorry, I'm having trouble sending that to the engine.", "assistant");
-        console.error("Pipeline send error:", error);
+        addMessage("Engine error.", "assistant");
     }
 }
 
