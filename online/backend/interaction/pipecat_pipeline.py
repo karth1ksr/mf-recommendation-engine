@@ -207,15 +207,6 @@ class MutualFundBot:
             # and Audio (via TTS) automatically. "Nothing extra."
             await self.task.queue_frames([TextFrame(greeting)])
 
-        @transport.event_handler("on_app_message")
-        async def on_app_message(transport, message, sender):
-            """Bridge for text-based chat over the transport channel."""
-            if isinstance(message, dict) and message.get("type") == "text":
-                text = message.get("text")
-                logger.debug(f"Received text message via transport: {text}")
-                # TranscriptionFrame makes the LLM 'hear' the text as if spoken.
-                # 'text' must be a string, not a dictionary.
-                await self.task.queue_frames([TranscriptionFrame(text=text, user_id=sender, timestamp="")])
 
     async def push_text(self, text: str):
         """
