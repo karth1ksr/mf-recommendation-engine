@@ -141,7 +141,10 @@ async function ensureConnected() {
             });
         }
 
-        await callInstance.join({ url: room_url });
+        await callInstance.join({
+            url: room_url,
+            audioSource: false // Start muted
+        });
         isConnecting = false;
         return true;
     } catch (err) {
@@ -285,7 +288,7 @@ userInput.addEventListener("keypress", (e) => {
 });
 
 const voiceBtn = document.getElementById("voice-btn");
-let isMuted = false;
+let isMuted = true;
 
 async function toggleMic() {
     if (!callInstance) {
@@ -300,8 +303,6 @@ async function toggleMic() {
     voiceBtn.innerHTML = isMuted ? "🔇" : "🎤";
     voiceBtn.title = isMuted ? "Unmute Mic" : "Mute Mic";
     voiceBtn.classList.toggle("muted", isMuted);
-
-    addMessage(isMuted ? "Microphone muted." : "Microphone unmuted.", "assistant");
 }
 
 if (voiceBtn) voiceBtn.addEventListener("click", toggleMic);
