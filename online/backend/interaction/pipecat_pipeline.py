@@ -68,7 +68,8 @@ class MutualFundBot:
         stt = DeepgramSTTService(api_key=self.settings.DEEPGRAM_API_KEY)
         tts = CartesiaTTSService(
             api_key=self.settings.CARTESIA_API_KEY,
-            voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",
+            voice_id="71a7ad14-091c-4e8e-a314-022ece01c121", # Baritone Fast
+            sample_rate=24000
         )
 
         # 2. Logic & Context
@@ -112,10 +113,9 @@ class MutualFundBot:
             "STRICT IDENTITY: You are a professional Mutual Fund Assistant. "
             "YOUR CORE WORKFLOW: Identify risk level and horizon, then call 'get_recommendations'. "
             "UI BEHAVIOR: "
-            "1. Recommendations: UI shows cards. Call 'get_recommendations' and then be SILENT (no text/speech). "
-            "2. Comparison: UI shows a side-by-side table. Call 'compare_funds' using 1-based ranks (1, 2, 3...). "
-            "   After calling, provide a brief 2-sentence insight on the key differentiator. This will appear in the UI."
-            "3. General: Keep all speech/text responses under 3 sentences. Avoid symbols, markdown, or lists."
+            "1. Recommendations: When you call 'get_recommendations', say ONLY 'Here are the recommended funds for your preference!'. The UI will show the cards. "
+            "2. Comparison: After calling 'compare_funds', provide a brief 2-sentence insight on the key differentiator. "
+            "3. General:Avoid symbols, markdown, or lists. NO BOLDING."
         )
 
         context = LLMContext(
@@ -141,12 +141,16 @@ class MutualFundBot:
         # Handlers
         async def get_reco_handler(params: FunctionCallParams):
             res = await self.mf_tools.get_recommendations(**params.arguments)
+            msg = "Here are the recommended funds for your preference!"
             # Push structured data directly (Standard format for our frontend)
-            await self.task.queue_frames([OutputTransportMessageFrame(message={
-                "type": "recommendation",
-                "data": res,
-                "message": "Here are the recommended funds for your preference!"
-            })])
+            await self.task.queue_frames([
+                OutputTransportMessageFrame(message={
+                    "type": "recommendation",
+                    "data": res,
+                    "message": msg
+                }),
+                TextFrame(msg) # Explicitly trigger TTS
+            ])
             await params.result_callback(res)
 
         async def compare_handler(params: FunctionCallParams):
@@ -155,12 +159,16 @@ class MutualFundBot:
                 await params.result_callback(res)
                 return
 
+            msg = "I've prepared the comparison for you below."
             # Push comparison data
-            await self.task.queue_frames([OutputTransportMessageFrame(message={
-                "type": "comparison_result",
-                "funds": [res["fund_a"], res["fund_b"]],
-                "horizon": res["analysis_context"]["horizon"]
-            })])
+            await self.task.queue_frames([
+                OutputTransportMessageFrame(message={
+                    "type": "comparison_result",
+                    "funds": [res["fund_a"], res["fund_b"]],
+                    "horizon": res["analysis_context"]["horizon"]
+                }),
+                TextFrame(msg) # Explicitly trigger TTS
+            ])
             await params.result_callback(res)
 
         async def explain_handler(params: FunctionCallParams):
@@ -185,8 +193,8 @@ class MutualFundBot:
             stt,
             user_aggregator,
             llm,
-            assistant_aggregator,
             tts,
+            assistant_aggregator,
             transport.output(),
         ])
 
@@ -203,29 +211,21 @@ class MutualFundBot:
             
             # 1. Stabilization wait to ensure data channel is 100% ready
             await asyncio.sleep(2)
-            
+    
             # 2. Sync state
             await self.mf_tools.load_snapshot()
-            
-            # 3. Push a direct UI message for the greeting to ensure it's not lost
-            greeting = "Hello! I'm your professional Mutual Fund Assistant. How can I help you today?"
-            await self.task.queue_frames([
-                OutputTransportMessageFrame(message={
-                    "type": "text",
-                    "text": greeting
-                }),
-                TextFrame(greeting)
-            ])
-            
-            # 4. Update LLM context
-            context.add_message({"role": "assistant", "content": greeting})
+    
+            # 3. Update LLM context with system status (no manual greeting)
             if self.mf_tools.snapshot.risk_level:
-                status = f"System: Loaded user profile: {self.mf_tools.snapshot}"
+                status = f"User profile loaded: risk={self.mf_tools.snapshot.risk_level}, horizon={self.mf_tools.snapshot.horizon}"
                 context.add_message({"role": "system", "content": status})
-            
-            logger.info(f"Session {self.session_id}: Pipeline greeting sent.")
-
-
+    
+   
+            # 4. Trigger LLM to generate greeting automatically
+            await self.task.queue_frames([LLMRunFrame()])
+    
+            logger.info(f"Session {self.session_id}: LLM greeting triggered.")
+        
     async def push_text(self, text: str):
         """
         Allows pushing text directy into the pipeline (for text-based chat).
@@ -255,9 +255,11 @@ async def start_bot_session(session_id: str, room_url: str):
         token=None,
         bot_name="MF Advisor",
         params=DailyParams(
-            audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            audio_out_sample_rate=24000,
+            transcription_enabled=False,
+            vad_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.3)),
         )
     )
 

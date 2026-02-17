@@ -102,11 +102,15 @@ async function ensureConnected() {
             });
 
             callInstance.on("track-started", (evt) => {
+                console.log("Remote track started:", evt.participant.session_id, evt.track.kind);
                 if (evt.participant.local) return;
                 if (evt.track.kind === "audio") {
+                    console.log("Setting up audio playback for bot...");
                     const audio = document.createElement("audio");
                     audio.srcObject = new MediaStream([evt.track]);
                     audio.autoplay = true;
+                    // Some browsers need an explicit play() call after srcObject is set
+                    audio.play().catch(e => console.warn("Autoplay was blocked or failed:", e));
                     document.body.appendChild(audio);
                 }
             });
@@ -302,9 +306,24 @@ async function toggleMic() {
 
 if (voiceBtn) voiceBtn.addEventListener("click", toggleMic);
 
+const startBtn = document.getElementById("start-btn");
+
+startBtn.addEventListener("click", async () => {
+    startBtn.disabled = true;
+    startBtn.innerText = "Connecting...";
+    const success = await ensureConnected();
+    if (success) {
+        startBtn.classList.add("hidden");
+        resetBtn.classList.remove("hidden");
+    } else {
+        startBtn.disabled = false;
+        startBtn.innerText = "Start Chat";
+    }
+});
+
 resetBtn.addEventListener("click", resetSession);
 
-// Automatically connect on page load
-window.addEventListener("load", () => {
-    ensureConnected();
-});
+// Remove the automatic load connection to satisfy autoplay policies
+// window.addEventListener("load", () => {
+//     ensureConnected();
+// });

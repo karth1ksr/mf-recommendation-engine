@@ -1,6 +1,6 @@
 import pandas as pd
 from utils.string_utils import normalize_name
-
+from ingestion.fund_master_ingestion import derive_plan_type
 class TerIngestor:
     def __init__(self, file_path: str, as_of_month: str):
         self.file_path = file_path
@@ -18,9 +18,9 @@ class TerIngestor:
 
         return df
 
-    @staticmethod
-    def derive_plan_type(name: str) -> str:
-        return "Direct" if "direct" in name else "Regular"
+    # @staticmethod
+    # def derive_plan_type(name: str) -> str:
+    #     return "Direct" if "direct" in name else "Regular"
 
     def transform(self, df: pd.DataFrame, fund_map: dict) -> list[dict]:
         records = []
