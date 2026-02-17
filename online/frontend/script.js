@@ -306,24 +306,9 @@ async function toggleMic() {
 
 if (voiceBtn) voiceBtn.addEventListener("click", toggleMic);
 
-const startBtn = document.getElementById("start-btn");
-
-startBtn.addEventListener("click", async () => {
-    startBtn.disabled = true;
-    startBtn.innerText = "Connecting...";
-    const success = await ensureConnected();
-    if (success) {
-        startBtn.classList.add("hidden");
-        resetBtn.classList.remove("hidden");
-    } else {
-        startBtn.disabled = false;
-        startBtn.innerText = "Start Chat";
-    }
-});
-
 resetBtn.addEventListener("click", resetSession);
 
-// Remove the automatic load connection to satisfy autoplay policies
-// window.addEventListener("load", () => {
-//     ensureConnected();
-// });
+// Automatically connect on page load
+window.addEventListener("load", () => {
+    ensureConnected();
+});
