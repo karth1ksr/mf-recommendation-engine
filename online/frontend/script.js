@@ -26,9 +26,10 @@ function addMessage(text, role) {
     const isSpecial = role.includes("fund-results");
 
     if (role === "assistant" && lastRole === "assistant" && lastMessageDiv && !isSpecial) {
-        // Find the paragraph and append text with a space
         const p = lastMessageDiv.querySelector("p");
         if (p) {
+            // Basic deduplication to prevent double-display of identical tool intros
+            if (p.innerText.includes(text.trim())) return;
             p.innerHTML += " " + text;
         } else {
             lastMessageDiv.innerHTML += `<p>${text}</p>`;
@@ -121,9 +122,18 @@ async function ensureConnected() {
                 console.log("Extracted Payload:", msg);
 
                 // --- 1. Aggressive Text Detection ---
-                const botText = msg.data?.text || msg.text || msg.data?.content || msg.message?.text;
-                const isTextType = ["bot-tts-text", "bot-llm-text", "text"].includes(msg.type);
+                const botText = msg.data?.text || msg.text || msg.data?.content || msg.message?.text || msg.data?.content;
 
+                // Unified User & Bot Transcription (Deepgram/Daily standard)
+                if (msg.type === "transcript" || msg.type === "user-transcript") {
+                    // Daily/Pipecat transcripts usually come in msg.text
+                    const text = msg.text || msg.data?.text;
+                    const role = msg.role === "assistant" ? "assistant" : "user";
+                    if (text) addMessage(text, role);
+                    return;
+                }
+
+                const isTextType = ["bot-tts-text", "bot-llm-text", "text"].includes(msg.type);
                 if (botText && isTextType) {
                     addMessage(botText, "assistant");
                     return;
@@ -131,11 +141,10 @@ async function ensureConnected() {
 
                 // --- 2. Structured Data Detection ---
                 if (msg.type === "recommendation") {
-                    addMessage(msg.message || "I've found these recommendations:", "assistant");
+                    // Don't add a text message here; let the LLM/TextFrame handle it
                     addMessage(renderFundList(msg.data), "assistant fund-results");
                 }
                 else if (msg.type === "comparison_result") {
-                    addMessage("Opening the comparison window...", "assistant");
                     showComparisonModal(msg.funds, msg.analysis || "Analyzing...", msg.horizon);
                 }
             });
@@ -143,8 +152,9 @@ async function ensureConnected() {
 
         await callInstance.join({
             url: room_url,
-            audioSource: false // Start muted
+            audioSource: true
         });
+        await callInstance.setLocalAudio(false);
         isConnecting = false;
         return true;
     } catch (err) {

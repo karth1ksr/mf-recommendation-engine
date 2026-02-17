@@ -23,6 +23,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.processors.aggregators.user_transcript_aggregator import UserTranscriptAggregator
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
@@ -110,12 +111,13 @@ class MutualFundBot:
         ])
 
         system_prompt = (
-            "STRICT IDENTITY: You are a professional Mutual Fund Assistant. "
-            "YOUR CORE WORKFLOW: Identify risk level and horizon, then call 'get_recommendations'. "
-            "UI BEHAVIOR: "
-            "1. Recommendations: When you call 'get_recommendations', say ONLY 'Here are the recommended funds for your preference!'. The UI will show the cards. "
-            "2. Comparison: After calling 'compare_funds', provide a brief 2-sentence insight on the key differentiator. "
-            "3. General:Avoid symbols, markdown, or lists. NO BOLDING."
+            "You are a professional Mutual Fund Assistant. "
+            "IDENTITY RULES: "
+            "- Ask the user for their risk level and horizon to get started. "
+            "- When you call 'get_recommendations', say: 'Here are the best funds I found based on your profile.' "
+            "- When you call 'compare_funds', say: 'I have opened the side-by-side comparison for those funds below.' "
+            "- Only provide one response at a time. Do not repeat instructions or internal logic. "
+            "- No symbols, markdown, lists, or BOLDING."
         )
 
         context = LLMContext(
@@ -131,10 +133,10 @@ class MutualFundBot:
                 ),
             ),
         )
-
+        user_transcript_aggregator = UserTranscriptAggregator()
         # 3. LLM Service
         llm = GoogleLLMService(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             api_key=self.settings.GEMINI_API_KEY
         )
 
@@ -146,10 +148,8 @@ class MutualFundBot:
             await self.task.queue_frames([
                 OutputTransportMessageFrame(message={
                     "type": "recommendation",
-                    "data": res,
-                    "message": msg
-                }),
-                TextFrame(msg) # Explicitly trigger TTS
+                    "data": res
+                })
             ])
             await params.result_callback(res)
 
@@ -166,8 +166,7 @@ class MutualFundBot:
                     "type": "comparison_result",
                     "funds": [res["fund_a"], res["fund_b"]],
                     "horizon": res["analysis_context"]["horizon"]
-                }),
-                TextFrame(msg) # Explicitly trigger TTS
+                })
             ])
             await params.result_callback(res)
 
@@ -191,6 +190,7 @@ class MutualFundBot:
             transport.input(),
             rtvi,
             stt,
+            user_transcript_aggregator,
             user_aggregator,
             llm,
             tts,
@@ -257,7 +257,7 @@ async def start_bot_session(session_id: str, room_url: str):
         params=DailyParams(
             audio_out_enabled=True,
             audio_out_sample_rate=24000,
-            transcription_enabled=False,
+            transcription_enabled=True,
             vad_enabled=True,
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.3)),
         )
