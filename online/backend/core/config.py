@@ -21,9 +21,11 @@ class Settings(BaseSettings):
     MYSQL_DB: str = "user_portfolio"
     
     # External Services
-    GEMINI_API_KEY: str = "AIzaSyBtLB9gXzS3m3-wDlww9ZRdfd3goy0p1vc"
-    GLADIA_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    DEEPGRAM_API_KEY: str = ""
     CARTESIA_API_KEY: str = ""
+
+    DAILY_API_KEY: str =""
     
     class Config:
         env_file = ".env"

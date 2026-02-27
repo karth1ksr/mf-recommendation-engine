@@ -10,6 +10,7 @@ const compModal = document.getElementById("comp-modal");
 const compTableContainer = document.getElementById("comp-table-container");
 const compAnalysis = document.getElementById("comp-analysis");
 const closeCompBtn = document.getElementById("close-comp");
+let callInstance = null;
 
 closeCompBtn.addEventListener("click", () => {
     compModal.classList.add("hidden");
@@ -17,12 +18,49 @@ closeCompBtn.addEventListener("click", () => {
 
 // --- UI Utilities ---
 
+let lastRole = null;
+let lastMessageDiv = null;
+
 function addMessage(text, role) {
-    const div = document.createElement("div");
-    div.className = `message ${role}`;
-    div.innerHTML = `<p>${text}</p>`;
-    chatWindow.appendChild(div);
+    // If it's a special result bubble (like fund-results), always create new
+    const isSpecial = role.includes("fund-results");
+
+    if (role === "assistant" && lastRole === "assistant" && lastMessageDiv && !isSpecial) {
+        const p = lastMessageDiv.querySelector("p");
+        if (p) {
+            // Basic deduplication to prevent double-display of identical tool intros
+            if (p.innerText.includes(text.trim())) return;
+            p.innerHTML += " " + text;
+        } else {
+            lastMessageDiv.innerHTML += `<p>${text}</p>`;
+        }
+    } else {
+        const div = document.createElement("div");
+        div.className = `message ${role}`;
+        div.innerHTML = `<p>${text}</p>`;
+        chatWindow.appendChild(div);
+        lastMessageDiv = div;
+    }
+
+    lastRole = role;
     chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    // Sync with comparison modal if open
+    if (role === "assistant" && compModal && !compModal.classList.contains("hidden")) {
+        // Limit sync to non-special messages (actual text)
+        if (!isSpecial) {
+            const formattedText = text.replace(/\n/g, '<br>');
+            if (compAnalysis) {
+                // If it's an append, we might want to append here too, 
+                // but let's just keep the latest insight or everything for now.
+                if (lastRole === "assistant") {
+                    compAnalysis.innerHTML += " " + formattedText;
+                } else {
+                    compAnalysis.innerHTML = formattedText;
+                }
+            }
+        }
+    }
 }
 
 function showLoading() {
@@ -39,43 +77,112 @@ function removeLoading() {
     if (loader) loader.remove();
 }
 
-// --- API Calls ---
+// --- Unified Interaction Logic ---
+
+let isConnecting = false;
+
+async function ensureConnected() {
+    if (isConnecting) return false;
+    if (callInstance && callInstance.meetingState() === "joined-meeting") {
+        return true;
+    }
+
+    isConnecting = true;
+    try {
+        const response = await fetch(`${API_BASE}/connect`, { method: "POST" });
+        const { room_url, session_id } = await response.json();
+
+        sessionId = session_id;
+        localStorage.setItem("mf_session_id", session_id);
+
+        if (!callInstance) {
+            // @ts-ignore
+            callInstance = DailyIframe.createCallObject({
+                audioSource: true,
+                videoSource: false,
+            });
+
+            callInstance.on("track-started", (evt) => {
+                console.log("Remote track started:", evt.participant.session_id, evt.track.kind);
+                if (evt.participant.local) return;
+                if (evt.track.kind === "audio") {
+                    console.log("Setting up audio playback for bot...");
+                    const audio = document.createElement("audio");
+                    audio.srcObject = new MediaStream([evt.track]);
+                    audio.autoplay = true;
+                    // Some browsers need an explicit play() call after srcObject is set
+                    audio.play().catch(e => console.warn("Autoplay was blocked or failed:", e));
+                    document.body.appendChild(audio);
+                }
+            });
+
+            callInstance.on("app-message", (evt) => {
+                console.log("Raw App Message Event:", evt);
+                const msg = evt.data;
+                console.log("Extracted Payload:", msg);
+
+                // --- 1. Aggressive Text Detection ---
+                const botText = msg.data?.text || msg.text || msg.data?.content || msg.message?.text || msg.data?.content;
+
+                // Unified User & Bot Transcription (Deepgram/Daily standard)
+                if (msg.type === "transcript" || msg.type === "user-transcript") {
+                    // Daily/Pipecat transcripts usually come in msg.text
+                    const text = msg.text || msg.data?.text;
+                    const role = msg.role === "assistant" ? "assistant" : "user";
+                    if (text) addMessage(text, role);
+                    return;
+                }
+
+                const isTextType = ["bot-tts-text", "bot-llm-text", "text"].includes(msg.type);
+                if (botText && isTextType) {
+                    addMessage(botText, "assistant");
+                    return;
+                }
+
+                // --- 2. Structured Data Detection ---
+                if (msg.type === "recommendation") {
+                    // Don't add a text message here; let the LLM/TextFrame handle it
+                    addMessage(renderFundList(msg.data), "assistant fund-results");
+                }
+                else if (msg.type === "comparison_result") {
+                    showComparisonModal(msg.funds, msg.analysis || "Analyzing...", msg.horizon);
+                }
+            });
+        }
+
+        await callInstance.join({
+            url: room_url,
+            audioSource: true
+        });
+        await callInstance.setLocalAudio(false);
+        isConnecting = false;
+        return true;
+    } catch (err) {
+        isConnecting = false;
+        console.error("Connection failed", err);
+        addMessage("Connection error.", "assistant");
+        return false;
+    }
+}
 
 async function sendMessage(text) {
+    const isConnected = await ensureConnected();
+    if (!isConnected) return;
+
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                session_id: sessionId,
-                text: text
-            })
-        });
-
-        const data = await response.json();
+        await callInstance.sendAppMessage({
+            id: crypto.randomUUID(),
+            label: "rtvi-ai",
+            type: "send-text",
+            data: {
+                content: text
+            }
+        }, "*");
         removeLoading();
-
-        if (data.type === "question") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "recommendation") {
-            const msg = data.message || "I've generated your personalized recommendations! ✨";
-            addMessage(msg, "assistant");
-            addMessage(renderFundList(data.data), "assistant fund-results");
-        } else if (data.type === "comparison_result") {
-            addMessage("I've prepared a side-by-side comparison for you. Opening the details...", "assistant");
-            showComparisonModal(data.funds, data.text, data.horizon);
-        } else if (data.type === "explanation") {
-            addMessage(data.text, "assistant");
-        } else if (data.type === "message") {
-            addMessage(data.text, "assistant");
-        }
     } catch (error) {
         removeLoading();
-        addMessage("Sorry, I'm having trouble connecting to the engine. Is the backend running?", "assistant");
-        console.error("API Error:", error);
+        addMessage("Engine error.", "assistant");
     }
 }
 
@@ -128,25 +235,27 @@ function showComparisonModal(funds, analysis, horizon) {
     `;
 
     compTableContainer.innerHTML = tableHtml;
-    // Simple newline to BR conversion for better formatting in modal
     const formattedAnalysis = analysis.replace(/\n/g, '<br>');
     compAnalysis.innerHTML = formattedAnalysis;
 
     if (compModal) {
         compModal.classList.remove("hidden");
-        compModal.style.display = "flex"; // Ensure it shows
+        compModal.style.display = "flex";
     }
 }
 
 async function resetSession() {
     try {
+        if (callInstance) {
+            await callInstance.leave();
+        }
         await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
         localStorage.removeItem("mf_session_id");
         sessionId = crypto.randomUUID();
         localStorage.setItem("mf_session_id", sessionId);
         chatWindow.innerHTML = `
             <div class="message assistant">
-                <p>Session reset. How can I help you find mutual funds today?</p>
+                <p>Advisor reset. Describe your investment goals to start.</p>
             </div>
         `;
     } catch (err) {
@@ -188,4 +297,29 @@ userInput.addEventListener("keypress", (e) => {
     }
 });
 
+const voiceBtn = document.getElementById("voice-btn");
+let isMuted = true;
+
+async function toggleMic() {
+    if (!callInstance) {
+        await ensureConnected();
+        return;
+    }
+
+    isMuted = !isMuted;
+    await callInstance.setLocalAudio(!isMuted);
+
+    // Update UI
+    voiceBtn.innerHTML = isMuted ? "🔇" : "🎤";
+    voiceBtn.title = isMuted ? "Unmute Mic" : "Mute Mic";
+    voiceBtn.classList.toggle("muted", isMuted);
+}
+
+if (voiceBtn) voiceBtn.addEventListener("click", toggleMic);
+
 resetBtn.addEventListener("click", resetSession);
+
+// Automatically connect on page load
+window.addEventListener("load", () => {
+    ensureConnected();
+});
