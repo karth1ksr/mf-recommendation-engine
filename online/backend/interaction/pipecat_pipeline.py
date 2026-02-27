@@ -50,6 +50,40 @@ load_dotenv(override=True)
 from typing import Dict, Any, Optional
 import uuid
 
+class TranscriptForwarder(FrameProcessor):
+    """
+    Processor that captures TranscriptionFrames (from STT) and forwards them 
+    to the frontend via an OutputTransportMessageFrame so they appear in the chat.
+    """
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame):
+            # logger.debug(f"Forwarding transcript: {frame.text}")
+            await self.push_frame(OutputTransportMessageFrame(
+                message={
+                    "type": "user-transcript",
+                    "text": frame.text,
+                    "role": "user"
+                }
+            ))
+
+class AssistantTranscriptForwarder(FrameProcessor):
+    """
+    Processor that captures TextFrames (from LLM) and forwards them 
+    to the frontend so the bot's speech appears in the chat.
+    """
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TextFrame) and direction == FrameDirection.DOWNSTREAM:
+            await self.push_frame(OutputTransportMessageFrame(
+                message={
+                    "type": "bot-llm-text",
+                    "text": frame.text,
+                    "role": "assistant"
+                }
+            ))
+
+
 
 class MutualFundBot:
     """
@@ -191,8 +225,10 @@ class MutualFundBot:
             rtvi,
             stt,
             user_transcript_aggregator,
+            TranscriptForwarder(),
             user_aggregator,
             llm,
+            AssistantTranscriptForwarder(),
             tts,
             assistant_aggregator,
             transport.output(),

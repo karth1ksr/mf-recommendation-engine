@@ -8,7 +8,7 @@ The offline batch pipeline is responsible for maintaining the data foundation of
 ### 1. Fund Master Pipeline (`FundMasterPipeline`)
 *   **Source**: `data/scheme_details.csv`
 *   **Responsibility**: 
-    *   Ingests all mutual fund schemes into `fund_master` collection.
+    *   Ingests all mutual fund schemes into `funds` table.
     *   Normalizes names and identifies categories (Equity, Debt, Hybrid).
     *   Flags "eligible" funds based on data availability and scheme age.
 
@@ -17,14 +17,14 @@ The offline batch pipeline is responsible for maintaining the data foundation of
 *   **Responsibility**: 
     *   **Incremental Sync**: Fetches the latest daily NAV for all funds.
     *   **Historical Sync**: Backfills 3-5 years of historical data for new funds.
-    *   **Storage**: `nav_timeseries` (MongoDB Time Series collection).
+    *   **Storage**: `nav_history` (PostgreSQL with TimescaleDB).
 
 ### 3. TER Pipeline (`TerPipeline`)
 *   **Source**: `data/ter_data.xlsx` (Monthly reports).
 *   **Responsibility**:
     *   Parses Total Expense Ratio (TER) data.
     *   Maps AMFI codes to internal `fund_id`.
-    *   Stores snapshots in `ter_snapshot`.
+    *   Stores snapshots in `ter_history` table.
 
 ### 4. Metrics Computation Pipeline (`MetricsPipeline`)
 *   **Objective**: Convert time-series NAV into actionable performance indicators.
@@ -44,11 +44,27 @@ The offline batch pipeline is responsible for maintaining the data foundation of
 2.  **Fetch Data**: Pull latest NAV and TER values.
 3.  **Compute Raw Metrics**: Run heavy math on historical prices.
 4.  **Normalize**: Transform metrics into a 0-1 relative score.
-5.  **Persist**: Store final results in `fund_metrics` for the Online Engine.
+5.  **Persist**: Store final results in `fund_metrics` table for the Online Engine.
 
 ---
 
 ## Technical Stack
-- **Database**: MongoDB (Timeseries & Standard collections).
+- **Database**: PostgreSQL (with TimescaleDB extension for NAV history).
 - **Processing**: Pandas, NumPy (Vectorized operations).
-- **Concurrency**: Multiprocessing for speed.
+- **Concurrency**: Multiprocessing (`ProcessPoolExecutor`).
+
+---
+
+## Project Structure
+The offline module is organized by functional responsibility:
+
+```text
+offline/
+├── ingestion/       # Logic for fetching raw NAV and Scheme data (AMFI APIs)
+├── metrics/         # Mathematical core (CAGR, Risk, Stability via NumPy/Pandas)
+├── pipelines/       # Orchestration classes for the 4 core data workflows
+├── storage/         # Repository pattern for PostgreSQL (NavRepo, MetricsRepo via asyncpg)
+├── validation/      # Data normalization and Z-Score computation logic
+├── utils/           # Shared helper functions (String cleaning, time calculation)
+└── main.py          # CLI entry point to trigger specific pipeline runs
+```

@@ -22,8 +22,8 @@ The online pipeline provides a real-time, conversational interface for users to 
 ### 3. Recommendation Engine (`RecommendationEngine`)
 *   **Deterministic Ranking**: Unlike the LLM, this engine uses strict mathematical formulas.
 *   **Formula**: `Score = 0.4*CAGR + 0.25*Consistency + 0.2*MaxDrawdown + 0.15*ExpenseRatio`.
-*   **Data Source**: Reads from the `fund_metrics` collection (precomputed by the offline batch).
-*   **Category Matching**: Performs fuzzy regex matching to find funds in the user's preferred asset class.
+*   **Data Source**: Reads from the `fund_metrics` table (precomputed by the offline batch).
+*   **Category Matching**: Performs SQL pattern matching to find funds in the user's preferred asset class.
 
 ### 4. Mutual Fund Tools (`MutualFundTools`)
 *   Acts as the "Registry" of capabilities exposed to the LLM.
@@ -31,6 +31,33 @@ The online pipeline provides a real-time, conversational interface for users to 
     *   `get_recommendations`: Fetch top N funds.
     *   `compare_funds`: Side-by-side metric comparison.
     *   `get_explanation`: Deep dive into *why* a fund was suggested.
+
+---
+
+## API Endpoints
+
+### 1. `POST /api/v1/connect`
+The primary entry point for the frontend to initiate a voice chat session.
+*   **Action**: 
+    1.  Provisions a dynamic, expiring WebRTC room via Daily.co.
+    2.  Spawns a background worker (`MutualFundBot`) to join the room.
+    3.  Generates a unique `session_id`.
+*   **Response**: 
+    ```json
+    {
+      "room_url": "https://your-domain.daily.co/room-id",
+      "session_id": "uuid-v4-string",
+      "config": { "services": { "llm": "gemini", "tts": "cartesia", "stt": "deepgram" } }
+    }
+    ```
+
+### 2. `DELETE /api/v1/session/{session_id}`
+Manual cleanup of a specific session and its associated bot worker.
+*   **Action**: Terminates the background bot task and clears session state.
+
+### 3. `GET /health`
+Standard health check for monitoring and load balancers.
+*   **Response**: `{"status": "healthy", "database": "mf_recom_db"}`
 
 ---
 
@@ -54,5 +81,25 @@ The online pipeline provides a real-time, conversational interface for users to 
 ## Technical Stack
 - **Framework**: FastAPI (Backend API).
 - **Voice Orchestration**: Pipecat.
-- **AI Services**: Deepgram (STT), Gemini (LLM), Cartesia (TTS).
-- **Communication**: WebSockets & WebRTC.
+- **AI Services**: Deepgram (STT), Gemini 1.5 Flash (LLM), Cartesia (TTS).
+- **Communication**: WebRTC (via Daily.co) & RTVI Data Channel.
+
+---
+
+## Project Structure
+The online module is split between a real-time backend and a glassmorphism frontend:
+
+```text
+online/
+├── backend/
+│   ├── api/          # FastAPI routes for room provisioning (/connect)
+│   ├── engine/       # Recommendation Core (Weighted ranker) & User Snapshot
+│   ├── interaction/  # Pipecat pipeline, RTVI processor, and Tool Handlers
+│   ├── storage/      # Asynchronous PostgreSQL access for session state (asyncpg)
+│   ├── services/     # Custom wrappers for AI and transport services
+│   └── main.py       # Entry point for the bot worker and HTTP server
+└── frontend/
+    ├── index.html    # Core layout with glassmorphism design
+    ├── script.js     # RTVI Client, WebRTC handling, and UI dynamics
+    └── style.css     # Modern styling for cards and chat interface
+```
